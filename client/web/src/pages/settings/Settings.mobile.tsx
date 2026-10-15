@@ -1,9 +1,10 @@
-import { IconBell, IconChart, IconDownload, IconInfo, IconTag } from '@/components/icons'
+import { IconBell, IconChart, IconDownload, IconInfo, IconInstall, IconTag } from '@/components/icons'
 import { Button } from '@/components/ui/Button'
+import { InstallInstructions } from './components/InstallInstructions'
 import { SettingsRow } from './components/SettingsRow'
 import type { SettingsViewProps } from './types'
 
-export default function SettingsMobile({ displayName, username, currencyCode, onLogout }: SettingsViewProps) {
+export default function SettingsMobile({ displayName, username, currencyCode, onLogout, install }: SettingsViewProps) {
   return (
     <div className="flex flex-col gap-5 px-4 pb-4 pt-6">
       <div className="flex items-center gap-3">
@@ -26,6 +27,9 @@ export default function SettingsMobile({ displayName, username, currencyCode, on
         />
         <SettingsRow Icon={IconBell} label="Notifications" />
         <SettingsRow Icon={IconDownload} label="Export data" />
+        {install.show && (
+          <SettingsRow Icon={IconInstall} label="Install app" trailing={install.trailing} onClick={install.onClick} />
+        )}
         <SettingsRow Icon={IconInfo} label="About Joint Wallet Watch" />
       </ul>
 
@@ -36,6 +40,15 @@ export default function SettingsMobile({ displayName, username, currencyCode, on
       >
         Log out
       </Button>
+
+      {install.platform && (
+        <InstallInstructions
+          platform={install.platform}
+          compact
+          open={install.instructionsOpen}
+          onClose={install.onCloseInstructions}
+        />
+      )}
     </div>
   )
 }

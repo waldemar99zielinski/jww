@@ -23,10 +23,22 @@ function errorMessage(error: unknown): string {
   return 'Something went wrong — try again.'
 }
 
+/** Why a stored-session restore failed — only an auth failure may clear the token. */
+export type RestoreFailureReason = 'unauthorized' | 'network'
+
 /** No-ops (via `condition`) in design mode (already "authenticated" from initialState) or when there's no stored token. */
-export const restoreSession = createAsyncThunk<UserDto>(
+export const restoreSession = createAsyncThunk<UserDto, void, { rejectValue: RestoreFailureReason }>(
   'auth/restoreSession',
-  () => getMe(),
+  async (_, { rejectWithValue }) => {
+    try {
+      return await getMe()
+    } catch (error) {
+      // A network failure (offline) rejects exactly like a 401 — distinguish them so a blip
+      // doesn't destroy the stored session.
+      const unauthorized = error instanceof ApiError && (error.status === 401 || error.status === 403)
+      return rejectWithValue(unauthorized ? 'unauthorized' : 'network')
+    }
+  },
   { condition: () => !isDesignMode() && getAuthToken() !== null },
 )
 
@@ -62,9 +74,12 @@ const authSlice = createSlice({
         state.user = action.payload
         state.error = null
       })
-      .addCase(restoreSession.rejected, (state) => {
-        setAuthToken(null)
-        state.status = 'unauthenticated'
+      .addCase(restoreSession.rejected, (state, action) => {
+        // Only a real auth failure clears the session. A network failure keeps the stored token
+        // and surfaces the existing 'error' state, so an offline blip cannot sign the user out.
+        const unauthorized = action.payload === 'unauthorized'
+        if (unauthorized) setAuthToken(null)
+        state.status = unauthorized ? 'unauthenticated' : 'error'
         state.user = null
       })
       .addCase(login.pending, (state) => {

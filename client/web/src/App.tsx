@@ -2,6 +2,7 @@ import { lazy, Suspense, use, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { BootSplash } from '@/components/BootSplash'
+import { OfflineGate } from '@/components/OfflineGate'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { store } from '@/store'
 import { restoreSession } from '@/store/authSlice'
@@ -44,26 +45,28 @@ function BootGate({ children }: { children: ReactNode }) {
 
 export function App() {
   return (
-    <Suspense fallback={<BootSplash />}>
-      <BootGate>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
+    <OfflineGate>
+      <Suspense fallback={<BootSplash />}>
+        <BootGate>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
 
-          <Route element={<ProtectedRoute />}>
-            <Route element={<AppShell />}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/transactions" element={<TransactionsPage />} />
-              <Route path="/add" element={<AddTransactionPage />} />
-              <Route path="/budgets" element={<BudgetsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/settings/categories" element={<SettingsCategoriesPage />} />
-              <Route path="/settings/currencies" element={<SettingsCurrenciesPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppShell />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/transactions" element={<TransactionsPage />} />
+                <Route path="/add" element={<AddTransactionPage />} />
+                <Route path="/budgets" element={<BudgetsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/settings/categories" element={<SettingsCategoriesPage />} />
+                <Route path="/settings/currencies" element={<SettingsCurrenciesPage />} />
+              </Route>
             </Route>
-          </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BootGate>
-    </Suspense>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BootGate>
+      </Suspense>
+    </OfflineGate>
   )
 }

@@ -180,6 +180,16 @@ export function IconDownload(props: IconProps) {
   )
 }
 
+export function IconInstall(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7 3.5h10a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5Z" />
+      <path d="M12 8v5.5" />
+      <path d="m9.7 11.2 2.3 2.3 2.3-2.3" />
+    </Icon>
+  )
+}
+
 export function IconInfo(props: IconProps) {
   return (
     <Icon {...props}>

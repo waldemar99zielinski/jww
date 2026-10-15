@@ -8,8 +8,13 @@ if a function needs a hook or touches `fetch`, it belongs in `hooks/` or `api/`,
 - `currency.ts` — amount formatting.
 - `dates.ts` — date formatting/parsing helpers used across pages.
 - `cssVars.ts` — typed helper for setting CSS custom properties from inline `style`.
-- `viewport.ts` / `designMode.ts` / `authToken.ts` — single-flag/value accessors backing
-  `useViewport`, `isDesignMode()`, and the stored auth token respectively.
+- `viewport.ts` / `designMode.ts` / `authToken.ts` / `pwa.ts` — single-flag/value accessors backing
+  `useViewport`, `isDesignMode()`, the stored auth token, and online/standalone status +
+  service-worker registration respectively.
+- `installEnvironment.ts` — the install decision tree as pure functions (`detectPlatform`,
+  `isInAppWebView`, `resolveInstallUiState`): maps a captured UA + browser snapshot to what the
+  Settings install row should render, so every branch is unit-testable without a browser. The
+  imperative `beforeinstallprompt` API lives in `hooks/useInstallPrompt.ts`, not here.
 - `categoryVisuals.ts` — resolves an icon + color for a **real, server-provided** category name
   by keyword-matching, with a deterministic hash-based fallback. This is the one to reach for
   when rendering any actual transaction/category data.

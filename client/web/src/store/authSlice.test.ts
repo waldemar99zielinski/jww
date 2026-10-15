@@ -61,6 +61,19 @@ describe('restoreSession', () => {
     expect(state.user).toBeNull()
     expect(getAuthToken()).toBeNull()
   })
+
+  it('keeps the stored token and enters error (not unauthenticated) on a network failure', async () => {
+    server.use(http.get('*/api/v1/auth/me', () => HttpResponse.error()))
+    setAuthToken('kept-token')
+    const store = createStore()
+
+    await store.dispatch(restoreSession())
+
+    const state = store.getState().auth
+    expect(state.status).toBe('error')
+    expect(state.user).toBeNull()
+    expect(getAuthToken()).toBe('kept-token')
+  })
 })
 
 describe('login', () => {

@@ -1,13 +1,17 @@
 # Testing Strategy
 
-This app currently ships with **no automated tests** (see the "Known gaps" section of the root
-`README.md`). This document proposes how to change that. It covers tooling, what to test at each
-layer of the architecture described in `README.md`, conventions, and a rollout plan.
+This document describes this app's testing strategy: the tooling, what to test at each layer of
+the architecture in `README.md`, the conventions, and how the suite was rolled out. The tooling
+below is now **implemented** — co-located `*.test.*` files live beside the code they cover, shared
+infrastructure is in `src/test/`, and Playwright specs are in `tests/e2e/`. Run it all with
+`npm run test` and `npm run test:e2e`.
 
 Tech choices below (Vitest, React Testing Library, MSW, Playwright) have been discussed and
 approved — see decisions inline. Nothing here should be treated as silently approving further
 tool additions beyond what's listed; any new testing-adjacent dependency still needs sign-off
-first, per the project's existing "ask before tech choices" rule.
+first, per the project's existing "ask before tech choices" rule. (The one production dependency
+this feature set added, `vite-plugin-pwa`, was chosen explicitly under that same rule for
+installability and the offline shell — see the root README's "PWA / install" section.)
 
 ## Philosophy
 
@@ -234,6 +238,32 @@ validation edge cases, filter combinations, empty states) and anything visual (r
 layout/breakpoints, Tailwind styling, icon rendering) — re-proving functional behavior against a
 real browser and real DB just adds slow, flaky duplicates of fast, deterministic tests, and visual
 concerns belong to a different kind of test entirely.
+
+## Manual verification: PWA install & offline
+
+Install and offline behaviour cannot be fully automated (real home screens, real Safari dialogs,
+real launchers). The automated coverage for this feature is the unit/hook/component tests beside
+`src/lib/installEnvironment.ts`, `src/hooks/useInstallPrompt.ts`, `src/components/Offline*.tsx`
+and `src/pages/settings/`, plus `tests/e2e/offline.spec.ts` — which covers the offline gate and
+focus restoration in a real browser (via `context.setOffline`). It does **not** cover the install
+flow or the service worker; those are checked by hand against `npm run preview`, once, per
+release that touches the PWA layer. Each row is a five-minute check; record the outcome in the PR.
+
+| Platform | Check | Pass condition |
+|---|---|---|
+| Android Chrome | Open the preview build over HTTPS (or a LAN tunnel), use the app ~30 s, open Settings | "Install app" appears; the dialog shows the wallet icon and "Joint Wallet Watch"; the installed launcher icon is not letterboxed into a white circle |
+| Android Chrome (installed) | Launch from the launcher with airplane mode on | The app opens and shows the offline screen — no browser error page, no blank screen |
+| iOS Safari | Settings → Install app | The sheet's steps match what the OS actually shows, including the "Open as Web App" toggle |
+| iOS (installed) | Launch from the home screen; then airplane mode and relaunch | No Safari chrome; content not clipped under the status bar; the offline screen appears |
+| macOS Safari 17+ | Settings → Install app → follow the inline steps | "Add to Dock" produces a Dock entry with the correct icon; the window opens standalone |
+| Desktop Chrome/Edge | Address-bar install icon **and** the Settings row | Both paths work; the installed window is standalone; the row is hidden once installed |
+| Any target | While installed and online, navigate the app and watch Cache Storage in DevTools | Only the shell entries and icons are present; no `/api/` or API-origin entries exist |
+
+After any change to the build config, run `npm run build` and read the injected precache manifest
+in `dist/sw.js`: it must list `index.html`, the entry `assets/app-*.js`, the entry CSS, the icons
+and the manifest — and must **not** list any page or layout chunk (`Home.mobile-*.js`,
+`Settings.desktop-*.js`, `pages/*/index.tsx`'s `index-*.js`, …). A malformed list is the
+difference between a working offline screen and a browser error page.
 
 ## Rollout plan
 

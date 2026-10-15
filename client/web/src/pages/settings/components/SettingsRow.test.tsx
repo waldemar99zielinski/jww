@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { IconTag } from '@/components/icons'
 import { SettingsRow } from './SettingsRow'
 
@@ -40,6 +41,23 @@ describe('SettingsRow', () => {
     )
 
     expect(screen.getByText('Notifications')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('renders a real button when `onClick` is given and fires it on click', async () => {
+    const onClick = vi.fn()
+    render(
+      <MemoryRouter>
+        <ul>
+          <SettingsRow Icon={IconTag} label="Install app" onClick={onClick} />
+        </ul>
+      </MemoryRouter>,
+    )
+
+    const button = screen.getByRole('button', { name: /install app/i })
+    await userEvent.click(button)
+
+    expect(onClick).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 })

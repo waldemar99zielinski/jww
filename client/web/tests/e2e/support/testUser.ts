@@ -3,7 +3,7 @@
  * process doesn't load the app's `.env`) — defaults to the same default as `api/client.ts`.
  * Override with `PLAYWRIGHT_API_BASE_URL` if your backend runs elsewhere (see tests/e2e/README.md).
  */
-export const API_BASE_URL = process.env.PLAYWRIGHT_API_BASE_URL ?? 'http://localhost:8000'
+export const API_BASE_URL = process.env.PLAYWRIGHT_API_BASE_URL ?? 'http://localhost:8001'
 
 export interface TestUser {
   username: string

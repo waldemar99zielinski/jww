@@ -12,8 +12,8 @@ import {
 /**
  * Handlers mirror each `api/*.ts` function's real path/method/query shape — keep them in sync
  * when a resource file changes (see this folder's README). Paths use the `*` wildcard prefix so
- * they match regardless of `VITE_API_BASE_URL` (which varies per machine/.env), not just the
- * default `http://localhost:8000`.
+ * they match regardless of the API origin (which varies per machine/.env, and is same-origin in
+ * dev), not just the default `http://localhost:8001`.
  */
 export const handlers = [
   http.post('*/api/v1/auth/login', () => HttpResponse.json({ data: fixtureTokenResponse })),

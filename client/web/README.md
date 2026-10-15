@@ -38,6 +38,33 @@ npm run dev
 
 Set `VITE_API_BASE_URL` in `.env` to point at the backend (see `.env.example`).
 
+In development the client calls the Vite dev server on the **same origin** and Vite proxies
+`/api/**` to the backend, so there is no CORS setup to do. The proxy target is `VITE_API_PROXY_TARGET`,
+falling back to `VITE_API_BASE_URL` (and then `http://localhost:8001`) — see the `server.proxy`
+block in `vite.config.ts`. Production builds are unaffected: they still call the real API origin
+from `VITE_API_BASE_URL`.
+
+### Testing on a phone (ngrok)
+
+Installability and service workers need a secure context, so expose the dev server over HTTPS with
+[ngrok](https://ngrok.com):
+
+```sh
+npm run dev                 # Vite on :5173, proxying /api to your backend
+ngrok http 5173             # in another terminal — gives you an https://…ngrok-free.app URL
+```
+
+Open the ngrok URL on the device. Because `/api` is proxied through the same tunnel, the app and
+the API are both reachable through that one URL — no second tunnel, no CORS.
+
+- ngrok hostnames are allowed by default (`server.allowedHosts` in `vite.config.ts`). For any
+  other tunnel host, set `VITE_DEV_ALLOWED_HOST`.
+- To keep HMR alive over the HTTPS tunnel, set `VITE_DEV_HMR_CLIENT_PORT=443`.
+- For the real (production) service worker and install flow, run `npm run build && npm run preview`
+  and tunnel the preview port instead — `preview.proxy` forwards `/api` the same way. Build with an
+  empty `VITE_API_BASE_URL` (`VITE_API_BASE_URL= npm run build`) so the built client also calls
+  `/api` on its own origin.
+
 ## Build
 
 ```sh
@@ -149,10 +176,45 @@ network — when adding a new API function, follow that same branch so it works 
 Keep `api/mock/data.ts`'s filtering logic in sync with the real API's filter semantics (see
 `api/transactions.ts`'s `TransactionFilters`) so design mode doesn't silently behave differently.
 
+## PWA / install (online-only)
+
+The client is installable. It ships a web app manifest and a Workbox service worker via
+`vite-plugin-pwa` (configured in `vite.config.ts`), so "Joint Wallet Watch" can be added to a
+phone's home screen or a desktop Dock and launched in a standalone window.
+
+**It is not an offline app.** The service worker precaches the *app shell only* — `index.html`,
+the entry JS/CSS, the icons and the manifest — and nothing else. No page/layout chunk is
+precached (a phone still downloads only the layout variant it renders), and no API response is
+ever cached or intercepted. The request-class contract is expressed directly in `vite.config.ts`:
+the narrow `globPatterns`, `navigateFallback: 'index.html'`, and the deliberate absence of any
+`runtimeCaching` block.
+
+Because there is no offline data, a device with no connection gets a full-screen **"You're
+offline"** panel covering the whole app — `/login` included — with a single *Retry*. The routed
+tree stays mounted underneath but `inert`, so a half-typed transaction or a paused TanStack Query
+survives a short drop instead of being destroyed by an unmount. See
+`src/components/OfflineGate.tsx` and `OfflineScreen.tsx` (state comes from
+`src/hooks/useOnlineStatus.ts` / `src/lib/pwa.ts`).
+
+- **Install entry point:** Settings → "Install app", both layouts. Chromium gets the native
+  install dialog (`beforeinstallprompt`); iOS/iPadOS and macOS Safari get written steps (Safari
+  cannot be prompted); a browser with no install path, or an in-app webview, shows a passive row
+  that explains why instead of a dead button. See `src/hooks/useInstallPrompt.ts` and
+  `src/lib/installEnvironment.ts`.
+- **Updates are silent:** `registerType: 'autoUpdate'` activates a new deploy and reloads an open
+  app without asking. A reload can discard unsaved form state (e.g. a draft in `pages/add/`).
+- **Deployment prerequisites (host-side):** the production origin must serve HTTPS; serve
+  `manifest.webmanifest` with a JSON content type; keep the existing SPA rewrite to
+  `index.html`; do not serve `sw.js` with a long-lived cache header, or updates cannot ship.
+
+App icon source art is `public/favicon.svg`; every PNG in `public/icons/` is generated from it —
+see `public/README.md` for the sizes and the replace-don't-generate rule.
+
 ## Known gaps / placeholders
 
-- **No automated tests exist yet** (no Vitest/Jest config, no `*.test.*` files). A testing
-  strategy has been proposed and approved — see `TESTING.md` — but it isn't implemented yet;
-  this bullet should move once the tooling from that doc actually lands.
+- **Automated tests exist** — Vitest + React Testing Library + MSW (co-located `*.test.*` files,
+  shared infrastructure in `src/test/`) and Playwright E2E (`tests/e2e/`). Run them with
+  `npm run test` and `npm run test:e2e`. `TESTING.md` is the strategy doc; it also lists what is
+  deliberately still out of scope (CI enforcement, visual regression, a coverage gate).
 - `pages/budgets/` and its `components/` are a visual prototype only — gated behind a
   "Proposed, not built yet" `<StatusBanner>` and backed by `data/sampleBudgets.ts`, not the API.

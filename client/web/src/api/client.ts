@@ -1,6 +1,9 @@
 import { getAuthToken } from '@/lib/authToken'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+// In dev the client calls the Vite dev server on the same origin, and `server.proxy` forwards
+// `/api` to the backend (see vite.config.ts). That keeps a single tunnel (e.g. ngrok) sufficient
+// and takes CORS off the dev path. Production builds call the real API origin directly.
+const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001')
 const API_PREFIX = '/api/v1'
 
 export class ApiError extends Error {

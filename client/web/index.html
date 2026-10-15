@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Fill the OS title bar in a standalone window. Keep in sync with --paper in src/index.css. -->
+    <meta name="theme-color" content="#121212" />
+    <!-- Apple: the manifest link and SW are injected/handled elsewhere; these tags are manual.
+         `apple-mobile-web-app-capable` is deliberately omitted (legacy; display: standalone covers it). -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="JWW" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <title>Joint Wallet Watch</title>
   </head>
   <body>

@@ -16,8 +16,10 @@ call these hooks, never TanStack Query's hooks directly.
 - `useDefaultCurrency.ts` and `useAuth.ts` are composed hooks (deriving from currencies data /
   Redux auth state respectively) rather than direct API wrappers — that's fine for a hook that
   combines existing state, just don't let business logic beyond simple derivation creep in here.
-- `useViewport.ts` is the one hook with no API/store backing — it's a `useSyncExternalStore`
-  wrapper around a media-query breakpoint, consumed by `ResponsiveView`.
+- `useViewport.ts`, `useOnlineStatus.ts` and `useInstallPrompt.ts` are the hooks with no API/store
+  backing — `useViewport` and `useOnlineStatus` are `useSyncExternalStore` wrappers over a browser
+  flag (breakpoint, connectivity); `useInstallPrompt` wraps Chromium's `beforeinstallprompt`/
+  `appinstalled` events. All three are browser-state hooks, not server resources.
 
 ## Adding a new resource hook
 

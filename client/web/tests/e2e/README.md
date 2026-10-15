@@ -18,7 +18,7 @@ get saved/shown, did navigation go where it should), never on appearance.
    export PLAYWRIGHT_TEST_USERNAME=...
    export PLAYWRIGHT_TEST_PASSWORD=...
    ```
-3. If your backend isn't on the default `http://localhost:8000` (check your `.env`'s
+3. If your backend isn't on the default `http://localhost:8001` (check your `.env`'s
    `VITE_API_BASE_URL` — Playwright's Node process doesn't read `.env` automatically), also set:
    ```sh
    export PLAYWRIGHT_API_BASE_URL=http://localhost:8001   # match your .env

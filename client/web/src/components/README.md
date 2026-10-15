@@ -33,6 +33,10 @@ here instead of copying it.
     loads (see root README's page architecture section).
   - `DesignModeBadge.tsx`, `ProtectedRoute.tsx`, `ResponsiveView.tsx` — app-shell/routing
     infrastructure.
+  - `OfflineGate.tsx` / `OfflineScreen.tsx` — the blocking "You're offline" state. `OfflineGate`
+    wraps the whole app (in `App.tsx`), marks the routed tree `inert` while offline and owns
+    focus/announcement; `OfflineScreen` is the pure panel it renders. App-shell chrome, so it
+    lives here rather than in a page.
   - `Logo.tsx` / `LogoMark.tsx` / `LogoWord.tsx` — the brand wordmark system. `LogoWord` is a
     private helper split into its own file (per the one-component-per-file rule) but is only ever
     imported by `Logo.tsx` — don't reach for it directly.
