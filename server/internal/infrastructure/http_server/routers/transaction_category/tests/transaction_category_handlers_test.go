@@ -16,7 +16,7 @@ import (
 	"jww/internal/domain"
 	"jww/internal/infrastructure/http_server/kernel"
 	categoryrouter "jww/internal/infrastructure/http_server/routers/transaction_category"
-	"jww/internal/service/transactioncategory"
+	"jww/internal/service/transaction_category"
 	"jww/internal/service/unit_of_work"
 )
 
@@ -81,7 +81,7 @@ func newTestRouter(t *testing.T) (*chi.Mux, *fakeRepository) {
 	t.Helper()
 	repo := newFakeRepository()
 	deps := &kernel.Deps{
-		TransactionCategoryService: transactioncategory.NewService(repo, fakeUoWManager{}),
+		TransactionCategoryService: transaction_category.NewService(repo, fakeUoWManager{}),
 	}
 	r := chi.NewRouter()
 	categoryrouter.Mount(r, r, deps)

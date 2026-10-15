@@ -2,11 +2,12 @@
 
 **Clean Architecture layer: Interface Adapters.** Implements inbound/outbound ports; sits between use cases and frameworks.
 
-**Role.** Parent directory; **no `.go` files of its own**. Adapters are the driven/secondary side: they implement ports that are defined in `internal/service`. Three subpackages:
+**Role.** Parent directory; **no `.go` files of its own**. Adapters are the driven/secondary side: they implement ports that are defined in `internal/service`. Four subpackages:
 
 - [`gateway/`](gateway/README.md) — Postgres repositories (pgx + Squirrel).
 - [`schema/`](schema/README.md) — HTTP request/response JSON shapes + validation.
 - [`security/`](security/README.md) — Argon2 password hasher, JWT token service, `security.Config`.
+- [`frankfurter/`](frankfurter/README.md) — exchange-rate provider client (`currency_exchange_rate.RateSource` over `net/http`).
 
 ## Rules
 

@@ -99,6 +99,9 @@ func (r *fakeExchangeRateRepo) Create(domain.AppContext, domain.CurrencyExchange
 func (r *fakeExchangeRateRepo) GetByCurrencies(domain.AppContext, domain.Currency, domain.Currency, time.Time, ...unit_of_work.UnitOfWork) (*domain.CurrencyExchangeRate, error) {
 	return nil, nil
 }
+func (r *fakeExchangeRateRepo) UpsertMany(domain.AppContext, []domain.CurrencyExchangeRateFlatten, ...unit_of_work.UnitOfWork) (currency_exchange_rate.UpsertCounts, error) {
+	return currency_exchange_rate.UpsertCounts{}, nil
+}
 func (r *fakeExchangeRateRepo) List(domain.AppContext, ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
 	return nil, nil
 }

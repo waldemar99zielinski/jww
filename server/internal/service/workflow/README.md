@@ -6,7 +6,7 @@
 
 ## Files
 
-- `currency_exchange_rate_workflow.go` — `CurrencyExchangeRateWorkflow{ currencyService, exchangeRateService, uowManager }`. Own-UoW: resolve `from`/`to` currencies, then `exchangeRateService.Create(..., active)`, `Finish`.
+- `currency_exchange_rate_workflow.go` — `CurrencyExchangeRateWorkflow{ currencyService, exchangeRateService, rateSource, uowManager }`. Own-UoW: resolve `from`/`to` currencies, then `exchangeRateService.Create(..., active)`, `Finish`. Also owns the daily sync: `SyncDaily(ctx)` → `Sync(ctx, yesterday)`, which lists every currency, fetches the full directed matrix from the `RateSource` port, filters to known codes, writes the batch with one `UpsertMany` (**no UoW** — one call), and returns `SyncResult{Currencies, Fetched, Inserted, Updated, Skipped, Warnings}`. It is base-agnostic (the base flag is never consulted).
 - `transaction_workflow.go` — `TransactionWorkflow{ currencyService, categoryService, userService, transactionService, uowManager }`. `Create` resolves currency/category/user then creates the transaction in one UoW. `List(ctx, TransactionListFilter)` resolves optional raw ids/codes into a `transaction.Filter`, validates, then lists.
 - `signup.go` — `SignupWorkflow{ userService }`; thin wrapper over `userService.Create` (single service call, no explicit UoW).
 - `summary.go` — `SummaryWorkflow{ currencyService, userService, transactionService, currencyExchangeRateService, uowManager }`. Resolves currency/user, normalizes dates, lists transactions in one UoW, converts each into the target currency, builds and validates `domain.Summary`.
@@ -14,8 +14,9 @@
 ## Rules
 
 - Depend on **concrete** `*x.Service` pointers, not interfaces (only services define ports).
-- Own the transaction: `active, err := w.uowManager.Create(ctx)`; pass `active` into every service call that accepts an optional `uow`; `_ = active.Restore(ctx)` on every error; `active.Finish(ctx)` once at the end.
-- Only call service methods that **accept/forward `uow`** (`Create`/`GetBy*`/`List`). A service's `Update`/`Delete` creates its own UoW — **never** call them inside a workflow's UoW (would nest).
+- **A single service call needs no unit of work.** If an operation delegates to exactly one service call (no multi-call resolution, no multi-service composition), call it with no `uow` and don't create one — wrapping one statement in a transaction only adds a pointless round-trip. See `CurrencyExchangeRateWorkflow.Sync` (one `UpsertMany`) vs `Create` (resolve `from`, resolve `to`, then create).
+- Own the transaction for **multi-call** operations: `active, err := w.uowManager.Create(ctx)`; pass `active` into every service call that accepts an optional `uow`; `_ = active.Restore(ctx)` on every error; `active.Finish(ctx)` once at the end.
+- Only call service methods that **accept/forward `uow`** (`Create`/`GetBy*`/`List`) inside a workflow's UoW. A service's `Update`/`Delete` creates its own UoW — **never** call them inside a workflow's UoW (would nest).
 - Translate raw request identifiers (codes, ids) into resolved `domain` structs before calling services; services never resolve FKs.
 - Timestamps/date normalization live here or in services, never in handlers.
 - Passthrough methods are added so every request for a resource still enters through one workflow type.
@@ -64,3 +65,11 @@ see `server/TESTING.md`.
 - A workflow with only one service call and no explicit `uowManager`
   (`SignupWorkflow`) doesn't need `Restore`/`Finish` assertions — just prove
   it forwards to the service and surfaces that service's own errors.
+- `CurrencyExchangeRateWorkflow.Sync` uses a hand-written `fakeRateSource`
+  (one fake per port, like the repositories). Cover: the whole matrix lands
+  through exactly one `UpsertMany` and opens **no** unit of work; a source
+  error writes nothing; an `UpsertMany` error propagates; fewer than two
+  currencies short-circuits; a skipped pair, an empty day, and an unconfigured
+  code each add exactly one warning instead of being dropped silently; `Sync`
+  forwards the supplied date unchanged and `SyncDaily` asks for yesterday in
+  UTC.

@@ -19,7 +19,7 @@ import (
 	transactionrouter "jww/internal/infrastructure/http_server/routers/transaction"
 	"jww/internal/service/currency"
 	"jww/internal/service/transaction"
-	"jww/internal/service/transactioncategory"
+	"jww/internal/service/transaction_category"
 	"jww/internal/service/unit_of_work"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
@@ -186,7 +186,7 @@ func newTestRouter(t *testing.T) (*chi.Mux, *testFixtures) {
 	transactionRepo := &fakeTransactionRepo{byID: map[int64]domain.Transaction{}}
 
 	currencyService := currency.NewService(currencyRepo, fakeUoWManager{})
-	categoryService := transactioncategory.NewService(categoryRepo, fakeUoWManager{})
+	categoryService := transaction_category.NewService(categoryRepo, fakeUoWManager{})
 	userService := user.NewService(userRepo, fakePasswordHasher{}, fakeUoWManager{})
 	transactionService := transaction.NewService(transactionRepo, fakeUoWManager{})
 

@@ -4,15 +4,23 @@ import "context"
 
 type RequestSourceType string
 
-const RequestSourceTypeHTTP RequestSourceType = "http"
+const (
+	RequestSourceTypeHTTP      RequestSourceType = "http"
+	RequestSourceTypeScheduler RequestSourceType = "scheduler"
+)
 
 type HTTPRequestSource struct {
 	Endpoint string
 }
 
+type SchedulerRequestSource struct {
+	Job string
+}
+
 type RequestSource struct {
-	Type RequestSourceType
-	HTTP *HTTPRequestSource
+	Type      RequestSourceType
+	HTTP      *HTTPRequestSource
+	Scheduler *SchedulerRequestSource
 }
 
 type AppContext struct {

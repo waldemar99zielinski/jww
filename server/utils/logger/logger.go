@@ -116,6 +116,9 @@ func appContextAttrs(ctx domain.AppContext) []slog.Attr {
 	if source.HTTP != nil {
 		attrs = append(attrs, slog.String("http_endpoint", source.HTTP.Endpoint))
 	}
+	if source.Scheduler != nil {
+		attrs = append(attrs, slog.String("job", source.Scheduler.Job))
+	}
 
 	if user := ctx.User(); user != nil {
 		attrs = append(attrs, slog.String("user_id", user.ID.String()))

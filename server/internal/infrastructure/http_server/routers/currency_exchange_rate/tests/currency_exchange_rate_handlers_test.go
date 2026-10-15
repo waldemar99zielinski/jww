@@ -64,6 +64,10 @@ func (f *fakeRateRepo) GetByCurrencies(_ domain.AppContext, from, to domain.Curr
 	return nil, nil
 }
 
+func (f *fakeRateRepo) UpsertMany(domain.AppContext, []domain.CurrencyExchangeRateFlatten, ...unit_of_work.UnitOfWork) (ratesvc.UpsertCounts, error) {
+	return ratesvc.UpsertCounts{}, nil
+}
+
 func (f *fakeRateRepo) List(domain.AppContext, ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
 	return f.rates, nil
 }
@@ -90,7 +94,7 @@ func newTestRouter(t *testing.T) (*chi.Mux, *fakeCurrencyRepo, *fakeRateRepo) {
 	currencyService := currency.NewService(currencyRepo, fakeUoWManager{})
 	rateService := ratesvc.NewService(rateRepo)
 	deps := &kernel.Deps{
-		CurrencyExchangeRateWorkflow: workflow.NewCurrencyExchangeRateWorkflow(currencyService, rateService, fakeUoWManager{}),
+		CurrencyExchangeRateWorkflow: workflow.NewCurrencyExchangeRateWorkflow(currencyService, rateService, nil, fakeUoWManager{}),
 	}
 	r := chi.NewRouter()
 	exchangeraterouter.Mount(r, r, deps)

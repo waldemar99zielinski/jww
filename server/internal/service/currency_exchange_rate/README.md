@@ -4,20 +4,30 @@
 
 ## Files — `currency_exchange_rate.go`
 
-- `Repository`: `Create(...)`, `GetByCurrencies(ctx, from, to domain.Currency, asOf time.Time, uow...)`, `List(ctx, uow...)`.
+- `Repository`: `Create(...)`, `UpsertMany(ctx, []domain.CurrencyExchangeRateFlatten, uow...) (UpsertCounts, error)`, `GetByCurrencies(ctx, from, to domain.Currency, asOf time.Time, uow...)`, `List(ctx, uow...)`.
 - `Service{ repository }`; `NewService(repository)` (two-arg-less constructor — no manager).
-- `Create(ctx, from, to domain.Currency, rate domain.ExchangeRate, uow ...)` — stamps `RecordedAt: time.Now().UTC()`, `Validate()`, repo `Create`.
+- `Create(ctx, from, to domain.Currency, rate domain.ExchangeRate, uow ...)` — stamps `RecordedAt: time.Now().UTC()`, `Validate()`, repo `Create`. Left untouched, so the manual HTTP endpoint keeps its "now" timestamp and single-row semantics.
+- `UpsertMany(ctx, []domain.CurrencyExchangeRateFlatten, uow ...)` — normalizes every `RecordedAt` to UTC, `Validate()`s the whole batch (first invalid row aborts before I/O), then hands it to the repo as **one** statement that replaces on a `(from, to, recorded_at)` conflict. An empty batch is a no-op.
 - `GetByCurrencies(...)` — nil → `domain.NewCurrencyExchangeRateNotFoundError(from.Code, to.Code)`.
 - `List`: passthrough.
 
+## Ports
+
+- `RateSource.Rates(ctx, currencies []string, asOf time.Time) (RateFetch, error)` — the outbound port the daily sync depends on. Returns every directed pair it can read plus a `RateSkip` for anything the provider omitted. Implemented in `internal/adapter/frankfurter`.
+- `RateSkip{From, To, Reason}` / `RateFetch{Rates, Skipped}` — the source's return shape. Skips are **returned**, never swallowed, so the boundary can log them.
+- `UpsertCounts{Inserted, Updated}` — how a batch changed the table.
+
 ## Rules
 
+- `CurrencyExchangeRateFlatten` (codes only) is the sync/write shape; the nested `domain.CurrencyExchangeRate` stays the read/HTTP shape. Both `Validate()` the same two CHECK constraints.
 - `asOf` is forwarded to the repo for "latest rate at or before this instant" (gateway: `ORDER BY recorded_at DESC LIMIT 1`).
-- Timestamps come from `time.Now().UTC()` here, never the handler.
+- `Create` timestamps come from `time.Now().UTC()` here, never the handler; `UpsertMany` trusts the caller's business-date `RecordedAt`.
 
 ## Avoid
 
-- Orchestrating multiple services (resolve currencies + write rate) — that belongs in `workflow.CurrencyExchangeRateWorkflow`. Imports: `domain`, `unit_of_work`, `time`.
+- Orchestrating multiple services (resolve currencies + fetch rates) — that belongs in `workflow.CurrencyExchangeRateWorkflow`.
+- Logging here (services never log) — return the skips/errors instead.
+- Imports: `domain`, `unit_of_work`, `time`.
 
 ## Testing requirement for this directory
 
@@ -30,4 +40,7 @@ here, so no Restore/Finish assertions needed (that's the caller's job).
 Needs: `Create`'s validation failures (`from == to`, non-positive rate)
 never reach the repo; `GetByCurrencies`'s `(nil, nil)` →
 `domain.NewCurrencyExchangeRateNotFoundError` translation; `List` is a
-passthrough.
+passthrough; `UpsertMany` — empty batch is a no-op that never touches the
+repo; a happy batch is forwarded and returns the repo's inserted/updated
+counts; the first invalid row aborts before any I/O; `RecordedAt` is
+normalized to UTC.

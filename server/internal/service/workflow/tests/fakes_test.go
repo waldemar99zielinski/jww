@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"jww/internal/domain"
+	currency_exchange_rate "jww/internal/service/currency_exchange_rate"
 	"jww/internal/service/transaction"
 	"jww/internal/service/unit_of_work"
 )
@@ -93,7 +94,11 @@ func (r *fakeCurrencyRepo) GetByCode(_ domain.AppContext, code string, _ ...unit
 }
 
 func (r *fakeCurrencyRepo) List(domain.AppContext, ...unit_of_work.UnitOfWork) ([]domain.Currency, error) {
-	return nil, nil
+	all := make([]domain.Currency, 0, len(r.byCode))
+	for _, c := range r.byCode {
+		all = append(all, c)
+	}
+	return all, nil
 }
 
 func (r *fakeCurrencyRepo) Update(domain.AppContext, domain.Currency, ...unit_of_work.UnitOfWork) error {
@@ -113,6 +118,11 @@ type fakeExchangeRateRepo struct {
 	createErr error
 	created   []domain.CurrencyExchangeRate
 	listErr   error
+
+	upsertErr    error
+	upsertCalls  int
+	upserted     []domain.CurrencyExchangeRateFlatten
+	upsertCounts currency_exchange_rate.UpsertCounts
 }
 
 func newFakeExchangeRateRepo(rates ...domain.CurrencyExchangeRate) *fakeExchangeRateRepo {
@@ -130,6 +140,15 @@ func (r *fakeExchangeRateRepo) Create(_ domain.AppContext, e domain.CurrencyExch
 	r.created = append(r.created, e)
 	r.byPair[e.FromCurrency.Code+"->"+e.ToCurrency.Code] = e
 	return nil
+}
+
+func (r *fakeExchangeRateRepo) UpsertMany(_ domain.AppContext, rates []domain.CurrencyExchangeRateFlatten, _ ...unit_of_work.UnitOfWork) (currency_exchange_rate.UpsertCounts, error) {
+	r.upsertCalls++
+	if r.upsertErr != nil {
+		return currency_exchange_rate.UpsertCounts{}, r.upsertErr
+	}
+	r.upserted = append(r.upserted, rates...)
+	return r.upsertCounts, nil
 }
 
 func (r *fakeExchangeRateRepo) GetByCurrencies(_ domain.AppContext, from, to domain.Currency, _ time.Time, _ ...unit_of_work.UnitOfWork) (*domain.CurrencyExchangeRate, error) {
@@ -151,6 +170,26 @@ func (r *fakeExchangeRateRepo) List(domain.AppContext, ...unit_of_work.UnitOfWor
 	all = append(all, r.seeded...)
 	all = append(all, r.created...)
 	return all, nil
+}
+
+// fakeRateSource implements currency_exchange_rate.RateSource. It records how
+// it was called so tests can assert the codes/date the workflow asked for.
+type fakeRateSource struct {
+	fetch     currency_exchange_rate.RateFetch
+	err       error
+	calls     int
+	lastCodes []string
+	lastAsOf  time.Time
+}
+
+func (s *fakeRateSource) Rates(_ domain.AppContext, currencies []string, asOf time.Time) (currency_exchange_rate.RateFetch, error) {
+	s.calls++
+	s.lastCodes = currencies
+	s.lastAsOf = asOf
+	if s.err != nil {
+		return currency_exchange_rate.RateFetch{}, s.err
+	}
+	return s.fetch, nil
 }
 
 // fakeCategoryRepo implements transactioncategory.Repository.

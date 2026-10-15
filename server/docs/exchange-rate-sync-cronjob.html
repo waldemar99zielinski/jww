@@ -48,7 +48,7 @@
     font-weight: 700; color: #5eead4; margin: 0 0 12px;
   }
   header.hero h1 { margin: 0 0 10px; font-size: 32px; line-height: 1.2; letter-spacing: -.02em; }
-  header.hero p { margin: 0; color: #cbd5e1; font-size: 16px; max-width: 760px; }
+  header.hero p { margin: 0; color: #cbd5e1; font-size: 16px; max-width: 780px; }
   .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
   .chip {
     display: inline-flex; align-items: center; gap: 7px;
@@ -137,7 +137,6 @@
     content: "❑"; position: absolute; left: 4px; top: 0; color: var(--blue); font-size: 15px;
   }
   hr.soft { border: none; border-top: 1px dashed var(--line); margin: 22px 0; }
-  .kbd { font-family: var(--mono); font-size: 12px; background:#0f172a; color:#e2e8f0; border-radius:5px; padding:1px 6px; }
 </style>
 </head>
 <body>
@@ -147,16 +146,18 @@
     <p class="eyebrow">Backend Design Analysis</p>
     <h1>Daily exchange-rate sync via a cron job</h1>
     <p>
-      A scheduled job inside <code>cmd/server</code> that pulls current rates from the
-      Frankfurter API once a day and records them as <code>currency_exchange_rates</code>
-      rows — designed to fit the existing Clean Architecture, hexagonal ports, unit-of-work
-      and testing conventions of the <code>jww</code> server.
+      A scheduled job inside <code>cmd/server</code> that runs at <b>00:01</b>, pulls the
+      <b>previous day's</b> rates for <b>every directed pair of the currencies it holds</b> from the
+      Frankfurter API, and records them as <code>currency_exchange_rates</code> rows in a single batched
+      insert — designed to fit the existing Clean Architecture, hexagonal ports, unit-of-work and testing
+      conventions of the <code>jww</code> server.
     </p>
     <div class="meta">
       <span class="chip"><span class="dot"></span> Target: server/</span>
       <span class="chip"><span class="dot"></span> Provider: Frankfurter v2 (no API key)</span>
-      <span class="chip"><span class="dot"></span> Recommended scheduler: robfig/cron v3</span>
-      <span class="chip"><span class="dot"></span> 2026-10-15</span>
+      <span class="chip"><span class="dot"></span> Scheduler: robfig/cron v3</span>
+      <span class="chip"><span class="dot"></span> Default: 00:01 UTC, previous day</span>
+      <span class="chip"><span class="dot"></span> Write path: one bulk INSERT</span>
     </div>
   </header>
 
@@ -169,7 +170,7 @@
       <li><a href="#architecture">Architecture mapping</a></li>
       <li><a href="#components">Component diagram</a></li>
       <li><a href="#flow">Runtime flow diagram</a></li>
-      <li><a href="#data">Data &amp; idempotency design</a></li>
+      <li><a href="#data">Data, batching &amp; idempotency</a></li>
       <li><a href="#config">Configuration</a></li>
       <li><a href="#files">File-by-file implementation plan</a></li>
       <li><a href="#testing">Testing plan</a></li>
@@ -183,19 +184,23 @@
   <section id="tldr">
     <h2 class="sec"><span class="n">01</span> Recommendation (TL;DR)</h2>
     <div class="callout ok">
-      <strong>Use <code>github.com/robfig/cron/v3</code> and a new outbound port <code>RateSource</code>.</strong>
+      <strong>Use <code>github.com/robfig/cron/v3</code>, a new outbound port <code>RateSource</code>, and a batched write path.</strong>
       Wrap the cron library in one infrastructure package (<code>internal/infrastructure/scheduler</code>),
       implement the port in a new adapter (<code>internal/adapter/frankfurter</code>), and put the
-      orchestration in a new method on the existing workflow (<code>CurrencyExchangeRateWorkflow.SyncDaily</code>).
-      Persist through the existing repository/gateway with an idempotent
-      <code>INSERT … ON CONFLICT DO NOTHING</code> — <b>no schema migration is required</b>.
+      orchestration in a new method on the existing workflow
+      (<code>CurrencyExchangeRateWorkflow.SyncDaily</code>). Persist the whole day's rates with a single
+      multi-row <b>upsert</b> (<code>INSERT … ON CONFLICT … DO UPDATE</code>) — <b>no schema migration is required</b>.
     </div>
     <ul>
       <li><b>Library:</b> <code>robfig/cron/v3</code> — the de-facto Go cron library, zero transitive dependencies, standard cron syntax, per-schedule timezone, built-in panic recovery &amp; overlapping-run guards, and a <code>Stop()</code> that returns a context so it slots straight into the server's existing SIGTERM shutdown.</li>
-      <li><b>Direction:</b> store <code>from = foreign currency</code>, <code>to = base currency (PLN)</code> — the exact direction <code>SummaryWorkflow.convert</code> already looks up.</li>
-      <li><b>Idempotency:</b> anchor each row's <code>recorded_at</code> to the <i>rate's own business date</i> at 00:00 UTC. Re-running, restarting, or catching up the same day then becomes a no-op through the table's existing primary key.</li>
-      <li><b>Layering:</b> the cron library is confined to the outermost layer; the workflow depends on the <code>RateSource</code> <i>port</i>, never on the Frankfurter adapter.</li>
-      <li><b>Loop of control:</b> HTTP fetch happens <i>before</i> the DB transaction opens (no tx held during network I/O); all writes land in one unit of work.</li>
+      <li><b>Coverage:</b> fetch and store the <b>full directed matrix</b> among all present currencies — <code>N×(N−1)</code> pairs (EUR→USD <i>and</i> USD→EUR, EUR→PLN <i>and</i> PLN→EUR, …). The job is <b>base-agnostic</b>: the base flag is irrelevant here, because the base can change and every pair is fetched anyway.</li>
+      <li><b>No <code>Quote</code> DTO:</b> a new, code-only <code>domain.CurrencyExchangeRateFlatten</code> (<code>FromCurrencyCode</code> / <code>ToCurrencyCode</code> / <code>Rate</code> / <code>RecordedAt</code>) is what the port, the service and the adapter share. The existing nested <code>domain.CurrencyExchangeRate</code> is left untouched for the read/HTTP paths.</li>
+      <li><b>By date:</b> the schedule fires at <b>00:01</b> and fetches the <i>previous calendar day's</i> rates via Frankfurter's <code>?date=</code>. The <code>RateSource</code> port takes an explicit <code>asOf</code> date, so the same primitive also serves ad-hoc backfill of any day.</li>
+      <li><b>Batching &amp; upsert:</b> the whole matrix is written in <b>one</b> statement inside one unit of work — a bulk <b>upsert</b> (<code>ON CONFLICT … DO UPDATE</code>), not one statement per pair and not a silent skip.</li>
+      <li><b>Re-runnable (replace, not skip):</b> each row's <code>recorded_at</code> is the rate's own business date at 00:00 UTC, and conflicts on <code>(from, to, recorded_at)</code> are resolved with <code>DO UPDATE SET rate = EXCLUDED.rate</code>. Re-running, restarting, or catching up the same day <b>replaces</b> that day's rates — never duplicates and never silently no-ops.</li>
+      <li><b>Never fail silently:</b> a pair the provider can't return, an unconfigured code, or an empty day is returned as a structured warning and logged at <b>WARN</b> at the boundary; hard failures log at <b>ERROR</b>. Nothing is dropped without a log line.</li>
+      <li><b>Layering:</b> the cron library is confined to the outermost layer; the workflow depends on the <code>RateSource</code> <i>port</i>, never on the Frankfurter adapter. Skipped items are <i>returned</i>, then logged once at <code>cmd/server</code> — services and adapters still don't log (see §07).</li>
+      <li><b>Loop of control:</b> HTTP fetch happens <i>before</i> the DB transaction opens (no tx held during network I/O), and all rows land in one transaction.</li>
     </ul>
   </section>
 
@@ -277,13 +282,23 @@
     </p>
 
     <h4>Endpoints used</h4>
-    <pre><code><span class="c"># One currency pair (base → quote). This is the call the adapter makes, once per held currency.</span>
-curl <span class="s">"https://api.frankfurter.dev/v2/rate/eur/pln"</span>
-<span class="c">// => {"date":"2026-10-15","base":"EUR","quote":"PLN","rate":4.3711}</span>
+    <pre><code><span class="c"># One base at a time, every other held currency as quotes → one request per currency.</span>
+curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=EUR&amp;quotes=PLN,USD"</span>
+<span class="c">// => [{"date":"2026-10-15","base":"EUR","quote":"PLN","rate":4.3711},</span>
+<span class="c">//     {"date":"2026-10-15","base":"EUR","quote":"USD","rate":1.0834}, ...]</span>
 
-<span class="c"># All quotes for one base (alternative / batching — see note below).</span>
-curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=EUR,USD"</span>
-<span class="c">// => [{"date":"2026-10-15","base":"PLN","quote":"EUR","rate":4.3711}, ...]</span></code></pre>
+<span class="c"># Add &amp;date=YYYY-MM-DD to fetch a specific day — this is what the sync uses.</span>
+curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=EUR&amp;quotes=PLN,USD&amp;date=2026-10-14"</span>
+<span class="c">// => [{"date":"2026-10-14","base":"EUR","quote":"PLN","rate":4.3757},</span>
+<span class="c">//     {"date":"2026-10-14","base":"EUR","quote":"USD","rate":1.1198}]</span>
+
+<span class="c"># Unknown / not-yet-published dates return an EMPTY array, not an error.</span>
+curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=EUR&amp;quotes=PLN&amp;date=2030-01-01"</span>
+<span class="c">// => []</span>
+
+<span class="c"># A single pair, if you ever need exactly one (same data, same date param).</span>
+curl <span class="s">"https://api.frankfurter.dev/v2/rate/eur/pln?date=2026-10-14"</span>
+<span class="c">// => {"date":"2026-10-14","base":"EUR","quote":"PLN","rate":4.3757}</span></code></pre>
 
     <table>
       <thead><tr><th>Property</th><th>Value / implication</th></tr></thead>
@@ -291,29 +306,34 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
         <tr><td>Base URL</td><td><code>https://api.frankfurter.dev</code> (configurable, so it can be self-hosted or pointed at a test double)</td></tr>
         <tr><td>Auth</td><td>None. Anonymous, no request logging — nothing secret to configure.</td></tr>
         <tr><td><code>rate</code></td><td>Units of <code>quote</code> per <b>1 unit</b> of <code>base</code>. Returned as a bare JSON number (e.g. <code>4.3711</code>). Decode it as <code>json.Number</code> and hand the text to <code>domain.ParseExchangeRate</code> — never <code>float64</code>.</td></tr>
-        <tr><td><code>date</code></td><td>The rate's <b>business date</b> (<code>YYYY-MM-DD</code>), not the fetch time. On weekends/holidays it is the last business day. This is what we anchor <code>recorded_at</code> to.</td></tr>
-        <tr><td>Errors</td><td><code>404</code>/<code>422</code> = unknown or unsupported currency; <code>5xx</code> = transient. JSON body <code>{"status":…,"message":…}</code>.</td></tr>
-        <tr><td>Cadence</td><td>Daily; ECB-sourced rates publish around <b>16:00 CET</b>. No intraday movement to chase.</td></tr>
+        <tr><td><code>date</code> (query)</td><td>Optional <code>?date=YYYY-MM-DD</code> selects a specific day. The sync passes it explicitly (the previous calendar day) so a run is deterministic regardless of when the tick fires.</td></tr>
+        <tr><td><code>date</code> (response)</td><td>The rate's <b>business date</b>, echoed back — for a valid request it equals the date asked for. This is what we anchor <code>recorded_at</code> to.</td></tr>
+        <tr><td>Unknown dates</td><td>A date with no data (future, or before the series starts) returns an <b>empty array</b>, not an error — surfaced as a <b>warning</b> and logged, never a silent success.</td></tr>
+        <tr><td>Errors</td><td>A quote the provider has no rate for is simply <b>absent</b> from the array — the adapter records it as a skipped pair (warning). A whole-request <code>5xx</code>, <code>404</code>/<code>422</code>, or a decode failure is a hard error that aborts the run.</td></tr>
+        <tr><td>Cadence</td><td>Daily; ECB-sourced rates publish around <b>16:00 CET</b>, so by <b>00:01</b> the previous day is fully published. No intraday movement to chase.</td></tr>
       </tbody>
     </table>
 
     <div class="callout warn">
-      <strong>Direction matters — and it is already decided for us.</strong>
-      <code>SummaryWorkflow.convert</code> resolves <code>GetByCurrencies(txn.Currency → target, …)</code> and
-      <b>multiplies</b> the amount. The stored rate must therefore be
-      <code>from = foreign, to = base</code> (e.g. <code>EUR→PLN = 4.3711</code>). Frankfurter's
-      <code>/v2/rate/{from}/{to}</code> returns exactly that shape, so we call it per held currency and
-      store the pair verbatim — no float inversion, no precision loss.
+      <strong>We store the full matrix — both directions of every pair.</strong>
+      The requirement is a daily rate for <b>all</b> present currencies, so the job records every ordered
+      pair among them. For <code>{PLN, EUR, USD}</code> that is six rows:
+      <code>PLN→EUR, PLN→USD, EUR→PLN, EUR→USD, USD→PLN, USD→EUR</code>. Nothing downstream is consulted to
+      decide the direction: the base flag can change over time, so the sync deliberately fetches both
+      directions of every pair and never treats any currency as the target.
     </div>
 
     <div class="callout info">
-      <strong>Why per-pair calls instead of one <code>?base=</code> call.</strong>
-      <code>/v2/rates?base=PLN</code> only ever returns <i>PLN→foreign</i>, the opposite of what the summary
-      needs. Producing the required <i>foreign→PLN</i> rows from that response would require inverting every
-      rate in fixed point. The app holds a handful of currencies, so N−1 direct pair calls once a day is
-      cheaper (in complexity) than inversion — and Frankfurter is edge-cached with no quota. The
-      <code>RateSource</code> port leaves room to switch to a batched implementation later without touching
-      the workflow.
+      <strong>Shape of the fetch: one request per base, no inversion.</strong>
+      Frankfurter returns <i>base→quote</i> for a single base per request, so the adapter makes
+      <b>N requests</b> — one per present currency as <code>base</code>, the rest as <code>quotes</code> — and
+      collects all <code>N×(N−1)</code> directed pairs straight from the provider. Every stored rate is a
+      direct observation; no row is derived by computing <code>1/rate</code>, which would lose precision in
+      the fixed-point <code>ExchangeRate</code> type. The app holds a handful of currencies and the API is
+      edge-cached with no quota, so N calls once a day is negligible. The <code>RateSource</code> port keeps
+      this shape swappable, and every request also carries <code>&amp;date=…</code>, pinning all N calls to
+      the same target day. Any quote the provider omits is returned as a <b>skipped pair</b> (with a reason), so
+      the workflow can log it — the adapter never drops a pair silently.
     </div>
   </section>
 
@@ -332,33 +352,33 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
       </thead>
       <tbody>
         <tr>
-          <td class="fileref">internal/domain/app_context.go</td>
+          <td class="fileref">internal/domain/{currency_exchange_rate,app_context}.go</td>
           <td>Entities</td>
-          <td><span class="badge mod">Modify</span> add <code>RequestSourceTypeScheduler</code> (+ optional <code>SchedulerRequestSource{Job}</code>)</td>
+          <td><span class="badge mod">Modify</span> <b>add <code>CurrencyExchangeRateFlatten</code></b> (codes; leaves <code>CurrencyExchangeRate</code> as-is); add <code>RequestSourceTypeScheduler</code></td>
           <td>stdlib only</td>
         </tr>
         <tr>
           <td class="fileref">internal/service/currency_exchange_rate/</td>
           <td>Use Cases</td>
-          <td><span class="badge mod">Modify</span> declare <code>RateSource</code> port + <code>Quote</code>; add <code>Repository.CreateIfAbsent</code>; add <code>Service.Record</code></td>
+          <td><span class="badge mod">Modify</span> declare <code>RateSource</code> port returning a <code>RateFetch</code> (rates + skipped pairs); add <code>Repository.UpsertMany</code>; add <code>Service.UpsertMany</code></td>
           <td><code>domain</code>, <code>unit_of_work</code>, stdlib</td>
         </tr>
         <tr>
           <td class="fileref">internal/service/workflow/currency_exchange_rate_workflow.go</td>
           <td>Use Cases (orchestration)</td>
-          <td><span class="badge mod">Modify</span> add <code>SyncDaily</code>; take the <code>RateSource</code> port in the constructor</td>
+          <td><span class="badge mod">Modify</span> add <code>Sync</code>/<code>SyncDaily</code>; collect skips into <code>SyncResult.Warnings</code>; take the <code>RateSource</code> port in the constructor</td>
           <td>sibling services, <code>domain</code>, <code>unit_of_work</code></td>
         </tr>
         <tr>
           <td class="fileref">internal/adapter/frankfurter/</td>
           <td>Interface Adapters</td>
-          <td><span class="badge new">New</span> implements <code>currency_exchange_rate.RateSource</code> over <code>net/http</code></td>
+          <td><span class="badge new">New</span> implements <code>currency_exchange_rate.RateSource</code> over <code>net/http</code>; returns a <code>RateFetch</code> (pairs + skips)</td>
           <td><code>domain</code>, the port's service package, <code>utils/configuration</code></td>
         </tr>
         <tr>
           <td class="fileref">internal/adapter/gateway/postgres_currency_exchange_rate_repository.go</td>
           <td>Interface Adapters</td>
-          <td><span class="badge mod">Modify</span> implement <code>CreateIfAbsent</code> (<code>ON CONFLICT DO NOTHING</code>)</td>
+          <td><span class="badge mod">Modify</span> implement <code>UpsertMany</code> over <code>[]domain.CurrencyExchangeRateFlatten</code> (multi-row <code>ON CONFLICT … DO UPDATE</code>)</td>
           <td>pgx, squirrel, <code>domain</code>, <code>unit_of_work</code></td>
         </tr>
         <tr>
@@ -370,7 +390,7 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
         <tr>
           <td class="fileref">cmd/server/{config,deps,main}.go</td>
           <td>Composition root</td>
-          <td><span class="badge mod">Modify</span> aggregate config, build the source + scheduler, start/stop it</td>
+          <td><span class="badge mod">Modify</span> aggregate config, build the source + scheduler, start/stop it, and log each run's warnings + summary</td>
           <td>everything (it is the composition root)</td>
         </tr>
       </tbody>
@@ -381,6 +401,7 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
       <li>Adapter implements outward</li>
       <li>Cron confined to infrastructure</li>
       <li>Workflow owns the transaction</li>
+      <li>One batched statement per run</li>
       <li>Adapters &amp; services don't log</li>
       <li>Boundary (scheduler) logs</li>
       <li>No <code>float64</code> for rates</li>
@@ -439,12 +460,12 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
 
         <rect class="new" x="560" y="210" width="300" height="60" rx="10"/>
         <text class="t" x="710" y="236" text-anchor="middle">adapter/gateway</text>
-        <text class="s" x="710" y="254" text-anchor="middle">add CreateIfAbsent · ON CONFLICT</text>
+        <text class="s" x="710" y="254" text-anchor="middle">add UpsertMany · bulk upsert</text>
 
         <!-- use case boxes -->
         <rect class="new" x="44" y="356" width="280" height="64" rx="10"/>
         <text class="t" x="184" y="382" text-anchor="middle">currency_exchange_rate</text>
-        <text class="s" x="184" y="400" text-anchor="middle">service · RateSource port + Record()</text>
+        <text class="s" x="184" y="400" text-anchor="middle">service · RateSource port + UpsertMany()</text>
 
         <rect class="new" x="360" y="356" width="300" height="64" rx="10"/>
         <text class="t" x="510" y="382" text-anchor="middle">service/workflow</text>
@@ -457,7 +478,7 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
         <!-- entity box -->
         <rect class="new" x="44" y="506" width="846" height="54" rx="10"/>
         <text class="t" x="467" y="530" text-anchor="middle">domain</text>
-        <text class="s" x="467" y="548" text-anchor="middle">NEW · RequestSourceTypeScheduler  (&amp; unchanged CurrencyExchangeRate / ExchangeRate / AppContext)</text>
+        <text class="s" x="467" y="548" text-anchor="middle">add CurrencyExchangeRateFlatten · + RequestSourceTypeScheduler</text>
 
         <!-- arrows -->
         <path class="ln" d="M288,94 L354,94"/>
@@ -514,8 +535,8 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
             .msg { stroke:#334155; stroke-width:1.7; fill:none; marker-end:url(#s-arrow); }
             .msgd { stroke:#94a3b8; stroke-width:1.7; fill:none; stroke-dasharray:6 4; marker-end:url(#s-arrow-d); }
             .ml { font:11.5px -apple-system,Segoe UI,Roboto,sans-serif; fill:#334155; }
-            .loop { fill:#f8fafc; stroke:#94a3b8; stroke-width:1.3; stroke-dasharray:5 4; }
-            .loopl { font:700 10.5px -apple-system,Segoe UI,Roboto,sans-serif; fill:#64748b; }
+            .note { fill:#ecfdf5; stroke:#10b981; stroke-width:1.2; }
+            .notel { font:10.5px -apple-system,Segoe UI,Roboto,sans-serif; fill:#047857; }
           </style>
         </defs>
 
@@ -548,68 +569,70 @@ curl <span class="s">"https://api.frankfurter.dev/v2/rates?base=PLN&amp;quotes=E
 
         <!-- 2 -->
         <path class="msg" d="M370,140 L634,140"/>
-        <text class="ml" x="502" y="133" text-anchor="middle">② List currencies → find base</text>
+        <text class="ml" x="502" y="133" text-anchor="middle">② List all present currencies</text>
         <path class="msgd" d="M640,176 L376,176"/>
         <text class="ml" x="508" y="170" text-anchor="middle">currencies[]</text>
 
-        <!-- 4 -->
+        <!-- 3 -->
         <path class="msg" d="M370,220 L874,220"/>
-        <text class="ml" x="620" y="213" text-anchor="middle">③ Latest(base, codes)  — network I/O, no DB tx open</text>
+        <text class="ml" x="620" y="213" text-anchor="middle">③ Rates(codes, yesterday) — full matrix, no DB tx open</text>
 
         <!-- self loop on RateSource -->
         <path class="msg" d="M880,250 L950,250 L950,292 L886,292"/>
-        <text class="ml" x="836" y="312" text-anchor="middle">GET /v2/rate/{code}/{base} ×N · no API key</text>
+        <text class="ml" x="826" y="312" text-anchor="middle">GET /v2/rates?base={code}&amp;quotes=… ×N · no API key</text>
 
         <!-- return quotes -->
         <path class="msgd" d="M880,344 L376,344"/>
-        <text class="ml" x="628" y="337" text-anchor="middle">[]Quote{From, To, Rate, Date}</text>
+        <text class="ml" x="628" y="337" text-anchor="middle">[]CurrencyExchangeRateFlatten — N×(N−1) pairs</text>
 
         <!-- uow create -->
         <path class="msg" d="M370,382 L634,382"/>
         <text class="ml" x="502" y="375" text-anchor="middle">④ uowManager.Create()</text>
 
-        <!-- loop frame -->
-        <rect class="loop" x="300" y="400" width="446" height="72" rx="7"/>
-        <text class="loopl" x="312" y="418">loop — for each quote</text>
-        <path class="msg" d="M370,452 L634,452"/>
-        <text class="ml" x="502" y="445" text-anchor="middle">⑤ Record(from,to,rate,date)  →  INSERT … ON CONFLICT DO NOTHING</text>
+        <!-- batch insert -->
+        <path class="msg" d="M370,448 L634,448"/>
+        <text class="ml" x="502" y="441" text-anchor="middle">⑤ UpsertMany(rows) → ONE multi-row INSERT … ON CONFLICT DO UPDATE</text>
+        <rect class="note" x="300" y="466" width="446" height="30" rx="7"/>
+        <text class="notel" x="523" y="485" text-anchor="middle">all N×(N−1) rows assembled in memory, then one upsert round-trip</text>
 
         <!-- finish -->
-        <path class="msg" d="M370,502 L634,502"/>
-        <text class="ml" x="502" y="495" text-anchor="middle">⑥ Finish()  →  COMMIT</text>
+        <path class="msg" d="M370,528 L634,528"/>
+        <text class="ml" x="502" y="521" text-anchor="middle">⑥ Finish()  →  COMMIT</text>
 
         <!-- result -->
-        <path class="msgd" d="M370,542 L126,542"/>
-        <text class="ml" x="248" y="535" text-anchor="middle">SyncResult{Fetched, Recorded, Skipped}</text>
+        <path class="msgd" d="M370,566 L126,566"/>
+        <text class="ml" x="248" y="559" text-anchor="middle">SyncResult{Currencies, Fetched, Inserted, Updated, Skipped, Warnings}</text>
 
         <!-- self log -->
-        <path class="msg" d="M120,572 L60,572 L60,604 L114,604"/>
-        <text class="ml" x="128" y="596">⑦ log completed / error</text>
+        <path class="msg" d="M120,594 L60,594 L60,620 L114,620"/>
+        <text class="ml" x="128" y="618">⑦ log warnings at WARN, summary at INFO, failure at ERROR</text>
       </svg>
-      <figcaption>Figure 2 — One daily run. The HTTP fetch (③) finishes before the transaction opens (④); every write in the loop shares that one unit of work.</figcaption>
+      <figcaption>Figure 2 — One daily run. The HTTP fetch (③) finishes before the transaction opens (④); the whole matrix is then written in a single batched statement (⑤) inside that one unit of work.</figcaption>
     </figure>
 
     <ol class="body">
       <li>The cron tick fires; the scheduler wrapper builds a fresh <code>domain.AppContext</code> with <code>source_type=scheduler</code>, a new <code>flow_id</code>, and a per-run timeout, then calls the job.</li>
-      <li><code>SyncDaily</code> lists the app's currencies and finds the one flagged <code>IsBase</code> (PLN). If none is set, it fails fast — the known "at least one base" gap surfaces here rather than silently doing nothing.</li>
-      <li>It calls <code>rateSource.Latest(ctx, base, foreignCodes)</code>. The adapter issues one <code>/v2/rate/{code}/{base}</code> request per foreign currency and returns <code>[]Quote</code>. Transport/decoding/5xx errors abort the run; a <code>404</code>/<code>422</code> (currency unsupported by the provider) simply omits that pair.</li>
+      <li><code>SyncDaily</code> lists <b>every</b> currency the app currently holds. It does <b>not</b> consult the base flag — the base can change, and every pair is fetched regardless. Fewer than two currencies short-circuits (nothing to pair).</li>
+      <li>It computes the <b>previous calendar day</b> and calls <code>rateSource.Rates(ctx, codes, asOf)</code>. The adapter issues one <code>/v2/rates?base={code}&amp;quotes=…&amp;date=…</code> request per currency and returns the readable pairs as <code>domain.CurrencyExchangeRateFlatten</code> values <i>plus</i> a <code>RateSkip</code> for every pair the provider had no rate for. Transport/decoding/5xx errors abort the run; nothing is dropped without being reported.</li>
       <li>Only now does the workflow open <b>one</b> unit of work.</li>
-      <li>For each quote it resolves the two <code>domain.Currency</code> values from the list already in memory and calls <code>Service.Record</code>, which validates and issues an idempotent insert.</li>
-      <li><code>Finish()</code> commits once. Any error mid-loop triggers <code>Restore()</code> and aborts.</li>
-      <li>Back at the boundary, the scheduler logs either “scheduled job completed” (with counts and duration) or “scheduled job failed” (with the error).</li>
+      <li>It keeps only pairs whose codes are currencies the app actually holds (FK guard) and hands the whole batch straight to <code>Service.UpsertMany</code>, which validates and issues <b>a single multi-row upsert</b> — one round-trip, not one per pair. Pairs the provider couldn't return, and codes the app doesn't hold, are collected as warnings rather than dropped.</li>
+      <li><code>Finish()</code> commits once. Any error during validation or the upsert triggers <code>Restore()</code> and aborts.</li>
+      <li>Back at the boundary, every collected warning is logged at <b>WARN</b>, the run summary (currencies / fetched / inserted / updated) at <b>INFO</b>, and a hard failure at <b>ERROR</b>.</li>
     </ol>
   </section>
 
   <!-- 7 -->
   <section id="data">
-    <h2 class="sec"><span class="n">07</span> Data &amp; idempotency design</h2>
+    <h2 class="sec"><span class="n">07</span> Data, batching &amp; upsert</h2>
 
     <h3>Anchoring <code>recorded_at</code> to the rate's business date</h3>
     <p>
       Today <code>Service.Create</code> stamps <code>RecordedAt = time.Now().UTC()</code>. The table is an
       append-only log whose primary key is <code>(from_currency_code, to_currency_code, recorded_at)</code>,
       and its own comment describes a row as “…was worth <code>rate</code> … <b>as of</b> <code>recorded_at</code>”.
-      For a scheduled feed, <i>the observation date is the meaningful instant</i>, not the fetch time.
+      For a scheduled feed, <i>the observation date is the meaningful instant</i>, not the fetch time: the run
+      pins the request to the <b>previous calendar day</b> and stores every row at that day, so a 00:01 tick on
+      the 15th writes rows dated the 14th.
     </p>
     <pre><code><span class="c">-- store the API's business date at midnight UTC</span>
 recorded_at = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)</code></pre>
@@ -618,17 +641,18 @@ recorded_at = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.
       <div class="card">
         <h4>Why this is better</h4>
         <ul>
-          <li><b>Idempotent:</b> two runs on the same business day collide on the primary key.</li>
+          <li><b>Re-runnable upsert:</b> a second run for the same business day collides on the primary key and <b>replaces</b> the rate — still exactly one row per pair per day.</li>
           <li><b>Correct history:</b> the row reads “rate as of 2026-10-15”, not “fetched at 16:02”.</li>
           <li><b>Safe restarts / catch-up:</b> re-running can never duplicate or drift.</li>
-          <li><b>Lookup semantics preserved:</b> <code>GetByCurrencies(asOf)</code> still takes the latest row ≤ <code>asOf</code>.</li>
+          <li><b>Stable lookups:</b> “latest rate for a pair at or before an instant” is unchanged.</li>
         </ul>
       </div>
       <div class="card">
         <h4>No migration needed</h4>
         <p class="muted" style="margin-top:4px">
           The existing primary key <code>currency_exchange_rates_pk</code> is exactly the conflict target
-          <code>ON CONFLICT (from_currency_code, to_currency_code, recorded_at) DO NOTHING</code> needs.
+          <code>ON CONFLICT (from_currency_code, to_currency_code, recorded_at)</code> needs for the
+          <code>DO UPDATE</code>.
           The rate stays <code>numeric(18,4)</code>, the distinct-currencies and positive-rate checks are
           unchanged, and the HTTP “create rate by hand” endpoint keeps using <code>time.Now()</code> because
           it is a separate code path.
@@ -636,24 +660,57 @@ recorded_at = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.
       </div>
     </div>
 
-    <h3>Idempotent insert</h3>
+    <h3>What lands each run</h3>
+    <p>For <code>{PLN, EUR, USD}</code> a single daily run writes <b>six</b> directed rows, all anchored to the same business date:</p>
+    <table>
+      <thead><tr><th>from_currency_code</th><th>to_currency_code</th><th>rate</th></tr></thead>
+      <tbody>
+        <tr><td>PLN</td><td>EUR</td><td>0.2288</td></tr>
+        <tr><td>PLN</td><td>USD</td><td>0.2562</td></tr>
+        <tr><td>EUR</td><td>PLN</td><td>4.3711</td></tr>
+        <tr><td>EUR</td><td>USD</td><td>1.0834</td></tr>
+        <tr><td>USD</td><td>PLN</td><td>3.9030</td></tr>
+        <tr><td>USD</td><td>EUR</td><td>0.9230</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">Illustrative values — each one is a direct Frankfurter observation, never a reciprocal computed locally. Each row is carried by <code>CurrencyExchangeRateFlatten</code> (<code>FromCurrencyCode</code>/<code>ToCurrencyCode</code>), so it maps field-for-field with no joined currency objects.</p>
+
+    <h3>One batched upsert (replace on conflict)</h3>
+    <p>The whole matrix is written in a single statement that <b>replaces</b> any existing row for the same pair and day; Squirrel builds it by calling <code>.Values(...)</code> once per row:</p>
     <pre><code>INSERT INTO currency_exchange_rates (from_currency_code, to_currency_code, rate, recorded_at)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (from_currency_code, to_currency_code, recorded_at) DO NOTHING;</code></pre>
-    <p>
-      Report whether a row was written from the command tag
-      (<code>RowsAffected() &gt; 0</code>) so <code>SyncResult</code> can distinguish <i>recorded</i> from
-      <i>already-present</i>.
-    </p>
+VALUES ($1, $2, $3, $4),
+       ($5, $6, $7, $8),
+       ...
+       ($n-3, $n-2, $n-1, $n)
+ON CONFLICT (from_currency_code, to_currency_code, recorded_at)
+DO UPDATE SET rate = EXCLUDED.rate
+RETURNING (xmax = 0) AS inserted;</code></pre>
+    <ul>
+      <li><b>One round-trip</b> for the entire day's matrix instead of <code>N×(N−1)</code> separate statements.</li>
+      <li><b>Replace, never skip:</b> a re-run updates that day's rows in place (<code>DO UPDATE</code>), so it can never silently no-op or duplicate.</li>
+      <li><b>Count what changed:</b> <code>RETURNING (xmax = 0)</code> distinguishes inserts (<code>xmax = 0</code>) from updates — that is <code>SyncResult.Inserted</code> vs <code>SyncResult.Updated</code>, both logged.</li>
+      <li><b>No intra-batch conflicts:</b> every row shares the same business-date <code>recorded_at</code> and each directed pair is unique, so the same key never appears twice in one statement. (A duplicate key within one <code>DO UPDATE</code> statement would be a fatal error — loudly, never silently.)</li>
+    </ul>
+
+    <h3>No silent failures</h3>
+    <p>Every path that does not produce a stored rate is surfaced and logged at the boundary — nothing is swallowed:</p>
+    <ul>
+      <li><b>Provider has no rate for a pair</b> → returned as a <code>RateSkip{From, To, Reason}</code>; logged at <b>WARN</b>.</li>
+      <li><b>Empty result for the day</b> (holiday/future date) → logged at <b>WARN</b> (“no rates returned for …”).</li>
+      <li><b>A returned code isn't a configured currency</b> → dropped from the batch but logged at <b>WARN</b>.</li>
+      <li><b>Transport / decode / 5xx</b> → the run aborts with an error; logged at <b>ERROR</b>.</li>
+      <li><b>Validation failure</b> (a bad row) → aborts before I/O; logged at <b>ERROR</b>.</li>
+    </ul>
+    <p class="muted">Services and adapters don't log (repo convention): they <i>return</i> warnings/errors, and <code>cmd/server</code> logs them once — see §09.7.</p>
 
     <h3>Precision</h3>
     <p>
       <code>ExchangeRate</code> is fixed-point 1e-4 (<code>numeric(18,4)</code>). Frankfurter returns up to
       five significant decimals (e.g. <code>0.94082</code>), which <code>domain.ParseExchangeRate</code>
-      rounds to four — fine for the currencies this app holds. Because we store the
-      <i>foreign→PLN</i> direction, rates for very weak currencies (e.g. IRR, VES) could round toward zero
-      and trip the “rate must be positive” check. Flagged as a risk; the seeded set (EUR, USD, PLN) is
-      unaffected.
+      rounds to four — fine for the currencies this app holds. Because every row is stored directly from the
+      provider (no inversion), the only residual concern is a pair whose true rate is below ~0.00005, which
+      would round toward zero and trip the “rate must be positive” check. Flagged as a risk; the seeded set
+      (EUR, USD, PLN) is unaffected.
     </p>
 
     <div class="callout danger">
@@ -677,7 +734,7 @@ ON CONFLICT (from_currency_code, to_currency_code, recorded_at) DO NOTHING;</cod
       <thead><tr><th>Env var</th><th>Owner</th><th>Default</th><th>Purpose</th></tr></thead>
       <tbody>
         <tr><td><code>EXCHANGE_RATE_SYNC_ENABLED</code></td><td rowspan="5"><code>scheduler.Config</code></td><td><code>false</code></td><td>Opt-in master switch; off means no cron is started.</td></tr>
-        <tr><td><code>EXCHANGE_RATE_SYNC_CRON</code></td><td><code>0 16 * * *</code></td><td>Standard 5-field spec, interpreted in <code>EXCHANGE_RATE_SYNC_TZ</code>. 16:00 UTC is safely after the ~16:00 CET ECB publication in both DST states. Daily is safe because rows dedupe on business date.</td></tr>
+        <tr><td><code>EXCHANGE_RATE_SYNC_CRON</code></td><td><code>1 0 * * *</code></td><td>Standard 5-field spec (<code>min hour dom mon dow</code>), interpreted in <code>EXCHANGE_RATE_SYNC_TZ</code>. <code>1 0 * * *</code> = <b>00:01 daily</b>; the job then fetches the <i>previous calendar day</i>, which is fully published by then. Daily is safe because rows dedupe on the business date.</td></tr>
         <tr><td><code>EXCHANGE_RATE_SYNC_TZ</code></td><td><code>UTC</code></td><td>IANA zone for schedule interpretation; invalid value fails startup.</td></tr>
         <tr><td><code>EXCHANGE_RATE_SYNC_TIMEOUT_SECONDS</code></td><td><code>60</code></td><td>Per-run context timeout for the whole job.</td></tr>
         <tr><td><code>EXCHANGE_RATE_SYNC_RUN_ON_START</code></td><td><code>false</code></td><td>Optional catch-up run at boot after migrations. Safe/idempotent.</td></tr>
@@ -688,7 +745,7 @@ ON CONFLICT (from_currency_code, to_currency_code, recorded_at) DO NOTHING;</cod
 
     <pre><code><span class="c"># --- internal/infrastructure/scheduler.Config ---</span>
 EXCHANGE_RATE_SYNC_ENABLED=false
-EXCHANGE_RATE_SYNC_CRON=0 16 * * *
+EXCHANGE_RATE_SYNC_CRON=1 0 * * *
 EXCHANGE_RATE_SYNC_TZ=UTC
 EXCHANGE_RATE_SYNC_TIMEOUT_SECONDS=60
 EXCHANGE_RATE_SYNC_RUN_ON_START=false
@@ -704,7 +761,37 @@ FRANKFURTER_TIMEOUT_SECONDS=15</code></pre>
     <h2 class="sec"><span class="n">09</span> File-by-file implementation plan</h2>
     <p class="muted">Sketches are illustrative — signatures, error handling and imports follow the repo's existing conventions.</p>
 
-    <h3>9.1 <span class="badge mod">Modify</span> <span class="fileref">internal/domain/app_context.go</span></h3>
+    <h3>9.1 <span class="badge mod">Modify</span> <span class="fileref">internal/domain/{currency_exchange_rate,app_context}.go</span></h3>
+
+    <h4>Add <code>CurrencyExchangeRateFlatten</code> (new)</h4>
+    <p>
+      A second, <b>code-only</b> struct for the sync path. It coexists with the existing
+      <code>CurrencyExchangeRate</code>, which keeps its nested <code>Currency</code> values for the read/HTTP
+      paths — the existing entity is <b>not</b> changed. The flatten type is exactly what a provider can supply
+      and what the append-only table stores: two codes, a rate, an instant.
+    </p>
+    <pre><code><span class="c">// CurrencyExchangeRateFlatten is the code-only projection used by the sync:</span>
+<span class="c">// the shape an external provider supplies and the shape the table stores.</span>
+<span class="c">// CurrencyExchangeRate (nested) remains the read/HTTP shape.</span>
+<span class="k">type</span> CurrencyExchangeRateFlatten <span class="k">struct</span> {
+    FromCurrencyCode <span class="k">string</span>
+    ToCurrencyCode   <span class="k">string</span>
+    Rate             ExchangeRate
+    RecordedAt       time.Time
+}
+
+<span class="k">func</span> (r CurrencyExchangeRateFlatten) Validate() <span class="k">error</span> {
+    <span class="k">if</span> r.FromCurrencyCode == r.ToCurrencyCode {
+        <span class="k">return</span> fmt.Errorf(<span class="s">"from_currency_code and to_currency_code must differ"</span>)
+    }
+    <span class="k">if</span> r.Rate &lt;= 0 {
+        <span class="k">return</span> fmt.Errorf(<span class="s">"rate must be positive"</span>)
+    }
+    <span class="k">return</span> <span class="k">nil</span>
+}</code></pre>
+    <p class="muted">Mirrors the same two business-rule <code>CHECK</code>s on <code>currency_exchange_rates</code> (distinct currencies, positive rate) that <code>CurrencyExchangeRate.Validate()</code> enforces.</p>
+
+    <h4>Add a scheduler request source</h4>
     <p>Give non-HTTP entry points a first-class source so the logger stays coherent.</p>
     <pre><code><span class="k">const</span> (
     RequestSourceTypeHTTP      RequestSourceType = <span class="s">"http"</span>
@@ -722,59 +809,86 @@ FRANKFURTER_TIMEOUT_SECONDS=15</code></pre>
     <p>In <span class="fileref">utils/logger/logger.go</span>, extend <code>appContextAttrs</code> with <code>if source.Scheduler != nil { … "job" … }</code> (the existing <code>source.HTTP != nil</code> guard already makes the HTTP field optional).</p>
 
     <h3>9.2 <span class="badge mod">Modify</span> <span class="fileref">internal/service/currency_exchange_rate/currency_exchange_rate.go</span></h3>
-    <p>Declare the outbound port and add the date-anchored, idempotent write path.</p>
-    <pre><code><span class="c">// Quote is one rate observation from an external provider:</span>
-<span class="c">// 1 unit of From was worth Rate units of To as of Date.</span>
-<span class="k">type</span> Quote <span class="k">struct</span> {
-    From <span class="k">string</span>
-    To   <span class="k">string</span>
-    Rate domain.ExchangeRate
-    Date time.Time
+    <p>Declare the outbound port and the batched <b>upsert</b> write path. No <code>Quote</code>, no service-local DTO — the port, the service and the repo all speak <code>domain.CurrencyExchangeRateFlatten</code>. Skips are <i>returned</i>, never swallowed; this package still does not log.</p>
+    <pre><code><span class="c">// RateSkip is a pair the source could not produce a rate for, with the reason,</span>
+<span class="c">// so the boundary can log it instead of dropping it silently.</span>
+<span class="k">type</span> RateSkip <span class="k">struct</span>{ From, To, Reason <span class="k">string</span> }
+
+<span class="c">// RateFetch is what a source returns for one day: the pairs it read and the</span>
+<span class="c">// pairs it skipped.</span>
+<span class="k">type</span> RateFetch <span class="k">struct</span> {
+    Rates   []domain.CurrencyExchangeRateFlatten
+    Skipped []RateSkip
 }
 
-<span class="c">// RateSource is the outbound port for fetching current rates.</span>
-<span class="c">// Implemented in internal/adapter/frankfurter.</span>
+<span class="c">// RateSource is the outbound port for fetching rates among a set of currencies.</span>
+<span class="c">// It returns every directed pair (N×(N−1) rows) for the given day; a zero asOf</span>
+<span class="c">// means the provider's latest. Implemented in internal/adapter/frankfurter.</span>
 <span class="k">type</span> RateSource <span class="k">interface</span> {
-    Latest(ctx domain.AppContext, base <span class="k">string</span>, currencies []<span class="k">string</span>) ([]Quote, <span class="k">error</span>)
+    Rates(ctx domain.AppContext, currencies []<span class="k">string</span>, asOf time.Time) (RateFetch, <span class="k">error</span>)
 }
+
+<span class="c">// UpsertCounts reports how a batch changed the table.</span>
+<span class="k">type</span> UpsertCounts <span class="k">struct</span>{ Inserted, Updated <span class="k">int</span> }
 
 <span class="k">type</span> Repository <span class="k">interface</span> {
     Create(ctx domain.AppContext, exchangeRate domain.CurrencyExchangeRate, uow ...unit_of_work.UnitOfWork) <span class="k">error</span>
-    <span class="c">// CreateIfAbsent writes nothing if the pair+instant already exists.</span>
-    CreateIfAbsent(ctx domain.AppContext, exchangeRate domain.CurrencyExchangeRate, uow ...unit_of_work.UnitOfWork) (<span class="k">bool</span>, <span class="k">error</span>)
+    <span class="c">// UpsertMany writes a whole batch in one statement, replacing rate on a</span>
+    <span class="c">// (from,to,recorded_at) conflict. Returns inserted/updated counts.</span>
+    UpsertMany(ctx domain.AppContext, rates []domain.CurrencyExchangeRateFlatten, uow ...unit_of_work.UnitOfWork) (UpsertCounts, <span class="k">error</span>)
     GetByCurrencies(ctx domain.AppContext, from, to domain.Currency, asOf time.Time, uow ...unit_of_work.UnitOfWork) (*domain.CurrencyExchangeRate, <span class="k">error</span>)
     List(ctx domain.AppContext, uow ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, <span class="k">error</span>)
 }
 
-<span class="c">// Record stores an observed rate as of recordedAt, ignoring a record that</span>
-<span class="c">// already exists for the same pair and instant. Reports whether a row was written.</span>
-<span class="k">func</span> (s *Service) Record(ctx domain.AppContext, from, to domain.Currency, rate domain.ExchangeRate, recordedAt time.Time, uow ...unit_of_work.UnitOfWork) (<span class="k">bool</span>, <span class="k">error</span>) {
-    exchangeRate := domain.CurrencyExchangeRate{
-        FromCurrency: from, ToCurrency: to, Rate: rate, RecordedAt: recordedAt.UTC(),
+<span class="c">// UpsertMany stamps every row with a UTC RecordedAt, validates the batch, then</span>
+<span class="c">// upserts it in ONE statement (replace on conflict). Returns inserted/updated</span>
+<span class="c">// counts; the first invalid row aborts before any I/O.</span>
+<span class="k">func</span> (s *Service) UpsertMany(ctx domain.AppContext, rates []domain.CurrencyExchangeRateFlatten, uow ...unit_of_work.UnitOfWork) (UpsertCounts, <span class="k">error</span>) {
+    <span class="k">if</span> len(rates) == 0 { <span class="k">return</span> UpsertCounts{}, <span class="k">nil</span> }
+    normalized := make([]domain.CurrencyExchangeRateFlatten, 0, len(rates))
+    <span class="k">for</span> _, r := <span class="k">range</span> rates {
+        r.RecordedAt = r.RecordedAt.UTC()
+        <span class="k">if</span> err := r.Validate(); err != <span class="k">nil</span> {
+            <span class="k">return</span> UpsertCounts{}, err
+        }
+        normalized = append(normalized, r)
     }
-    <span class="k">if</span> err := exchangeRate.Validate(); err != <span class="k">nil</span> {
-        <span class="k">return</span> <span class="k">false</span>, err
-    }
-    <span class="k">return</span> s.repository.CreateIfAbsent(ctx, exchangeRate, uow...)
+    <span class="k">return</span> s.repository.UpsertMany(ctx, normalized, uow...)
 }</code></pre>
-    <p class="muted"><code>Create</code> is left untouched so the manual HTTP endpoint keeps its “now” timestamp.</p>
+    <p class="muted"><code>Create</code> is left untouched so the manual HTTP endpoint keeps its “now” timestamp and single-row semantics.</p>
 
     <h3>9.3 <span class="badge mod">Modify</span> <span class="fileref">internal/adapter/gateway/postgres_currency_exchange_rate_repository.go</span></h3>
-    <pre><code><span class="k">func</span> (r *PostgresCurrencyExchangeRateRepository) CreateIfAbsent(ctx domain.AppContext, exchangeRate domain.CurrencyExchangeRate, uow ...unit_of_work.UnitOfWork) (<span class="k">bool</span>, <span class="k">error</span>) {
+    <pre><code><span class="k">func</span> (r *PostgresCurrencyExchangeRateRepository) UpsertMany(ctx domain.AppContext, rates []domain.CurrencyExchangeRateFlatten, uow ...unit_of_work.UnitOfWork) (currency_exchange_rate.UpsertCounts, <span class="k">error</span>) {
+    <span class="k">if</span> len(rates) == 0 { <span class="k">return</span> currency_exchange_rate.UpsertCounts{}, <span class="k">nil</span> }
     db, err := dbFromUnitOfWork(r.db, uow...)
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> <span class="k">false</span>, err }
-    rateNumeric, err := exchangeRateToNumeric(exchangeRate.Rate)
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> <span class="k">false</span>, err }
-    sql, args, err := psql.Insert(<span class="s">"currency_exchange_rates"</span>).
-        Columns(<span class="s">"from_currency_code"</span>, <span class="s">"to_currency_code"</span>, <span class="s">"rate"</span>, <span class="s">"recorded_at"</span>).
-        Values(exchangeRate.FromCurrency.Code, exchangeRate.ToCurrency.Code, rateNumeric, exchangeRate.RecordedAt).
-        Suffix(<span class="s">"ON CONFLICT (from_currency_code, to_currency_code, recorded_at) DO NOTHING"</span>).
+    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.UpsertCounts{}, err }
+
+    insert := psql.Insert(<span class="s">"currency_exchange_rates"</span>).
+        Columns(<span class="s">"from_currency_code"</span>, <span class="s">"to_currency_code"</span>, <span class="s">"rate"</span>, <span class="s">"recorded_at"</span>)
+    <span class="k">for</span> _, rate := <span class="k">range</span> rates {
+        rateNumeric, err := exchangeRateToNumeric(rate.Rate)
+        <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.UpsertCounts{}, err }
+        insert = insert.Values(rate.FromCurrencyCode, rate.ToCurrencyCode, rateNumeric, rate.RecordedAt)
+    }
+    sql, args, err := insert.
+        Suffix(<span class="s">"ON CONFLICT (from_currency_code, to_currency_code, recorded_at) DO UPDATE SET rate = EXCLUDED.rate RETURNING (xmax = 0)"</span>).
         ToSql()
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> <span class="k">false</span>, err }
-    tag, err := db.Exec(ctx.Context(), sql, args...)
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> <span class="k">false</span>, err }
-    <span class="k">return</span> tag.RowsAffected() &gt; 0, <span class="k">nil</span>
+    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.UpsertCounts{}, err }
+
+    rows, err := db.Query(ctx.Context(), sql, args...)
+    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.UpsertCounts{}, err }
+    <span class="k">defer</span> rows.Close()
+
+    <span class="k">var</span> counts currency_exchange_rate.UpsertCounts
+    <span class="k">for</span> rows.Next() {
+        <span class="k">var</span> inserted <span class="k">bool</span>
+        <span class="k">if</span> err := rows.Scan(&amp;inserted); err != <span class="k">nil</span> { <span class="k">return</span> counts, err }
+        <span class="k">if</span> inserted { counts.Inserted++ } <span class="k">else</span> { counts.Updated++ }
+    }
+    <span class="k">if</span> err := rows.Err(); err != <span class="k">nil</span> { <span class="k">return</span> counts, err }
+    <span class="k">return</span> counts, <span class="k">nil</span>
 }</code></pre>
+    <p class="muted">Squirrel accumulates one <code>VALUES</code> group per <code>.Values(...)</code> call, producing a single multi-row statement capped by pgx's parameter limit (~65,535 → ~16k rows; the matrix is far smaller). <code>ON CONFLICT … DO UPDATE</code> returns one row per affected row; <code>xmax = 0</code> marks a fresh insert (Postgres stamps <code>xmax</code> on updated tuples).</p>
 
     <h3>9.4 <span class="badge new">New</span> <span class="fileref">internal/adapter/frankfurter/frankfurter.go</span></h3>
     <pre><code><span class="c">// Package frankfurter implements currency_exchange_rate.RateSource using the</span>
@@ -803,33 +917,61 @@ FRANKFURTER_TIMEOUT_SECONDS=15</code></pre>
 <span class="k">type</span> rateResponse <span class="k">struct</span> {
     Date  <span class="k">string</span>      <span class="t">`json:"date"`</span>
     Base  <span class="k">string</span>      <span class="t">`json:"base"`</span>
-    Quote <span class="k">string</span>      <span class="t">`json:"quote"`</span>
+    QuoteCode <span class="k">string</span>  <span class="t">`json:"quote"`</span>
     Rate  json.Number <span class="t">`json:"rate"`</span> <span class="c">// never float64</span>
 }
 
-<span class="k">func</span> (c *Client) Latest(ctx domain.AppContext, base <span class="k">string</span>, currencies []<span class="k">string</span>) ([]currency_exchange_rate.Quote, <span class="k">error</span>) {
-    out := make([]currency_exchange_rate.Quote, 0, len(currencies))
-    <span class="k">for</span> _, code := <span class="k">range</span> currencies {
-        <span class="k">if</span> code == base { <span class="k">continue</span> }
-        q, found, err := c.rate(ctx, code, base)
-        <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> <span class="k">nil</span>, err }
-        <span class="k">if</span> found { out = append(out, q) }
+<span class="c">// Rates fetches base→quote for every currency as base for asOf (zero = latest),</span>
+<span class="c">// returning the readable pairs and a RateSkip for every pair the provider omitted.</span>
+<span class="k">func</span> (c *Client) Rates(ctx domain.AppContext, currencies []<span class="k">string</span>, asOf time.Time) (currency_exchange_rate.RateFetch, <span class="k">error</span>) {
+    out := currency_exchange_rate.RateFetch{
+        Rates: make([]domain.CurrencyExchangeRateFlatten, 0, len(currencies)*(len(currencies)-1)),
+    }
+    <span class="k">for</span> _, base := <span class="k">range</span> currencies {
+        quotes := make([]<span class="k">string</span>, 0, len(currencies)-1)
+        <span class="k">for</span> _, code := <span class="k">range</span> currencies {
+            <span class="k">if</span> code != base { quotes = append(quotes, code) }
+        }
+        batch, err := c.rates(ctx, base, quotes, asOf)
+        <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.RateFetch{}, err }
+        out.Rates = append(out.Rates, batch.Rates...)
+        out.Skipped = append(out.Skipped, batch.Skipped...)
     }
     <span class="k">return</span> out, <span class="k">nil</span>
 }
 
-<span class="k">func</span> (c *Client) rate(ctx domain.AppContext, from, to <span class="k">string</span>) (currency_exchange_rate.Quote, <span class="k">bool</span>, <span class="k">error</span>) {
-    url := fmt.Sprintf(<span class="s">"%s/v2/rate/%s/%s"</span>, c.baseURL, url.PathEscape(from), url.PathEscape(to))
+<span class="c">// rates GETs /v2/rates?base=…&amp;quotes=…&amp;date=… , maps each row to a flatten, and</span>
+<span class="c">// records a RateSkip for every requested quote the provider left out.</span>
+<span class="k">func</span> (c *Client) rates(ctx domain.AppContext, base <span class="k">string</span>, quotes []<span class="k">string</span>, asOf time.Time) (currency_exchange_rate.RateFetch, <span class="k">error</span>) {
+    url := fmt.Sprintf(<span class="s">"%s/v2/rates?base=%s&amp;quotes=%s"</span>, c.baseURL, base, strings.Join(quotes, <span class="s">","</span>))
+    <span class="k">if</span> !asOf.IsZero() {
+        url += <span class="s">"&amp;date="</span> + asOf.Format(<span class="s">"2006-01-02"</span>)
+    }
     req, err := http.NewRequestWithContext(ctx.Context(), http.MethodGet, url, <span class="k">nil</span>)
     <span class="c">// ... Do, then:</span>
-    <span class="c">//   404 / 422  → return Quote{}, false, nil   (provider doesn't know the pair)</span>
-    <span class="c">//   !200       → wrapped error               (aborts the whole run)</span>
-    <span class="c">//   decode rateResponse, then:</span>
-    rate, err := domain.ParseExchangeRate(body.Rate.String())
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.Quote{}, <span class="k">false</span>, err }
-    date, err := time.Parse(<span class="s">"2006-01-02"</span>, body.Date)
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.Quote{}, <span class="k">false</span>, err }
-    <span class="k">return</span> currency_exchange_rate.Quote{From: from, To: to, Rate: rate, Date: date}, <span class="k">true</span>, <span class="k">nil</span>
+    <span class="c">//   !200 → wrapped error   (a hard failure that aborts the whole run)</span>
+    <span class="k">var</span> body []rateResponse
+    <span class="c">// json.NewDecoder(io.LimitReader(resp.Body, 1&lt;&lt;20)).Decode(&amp;body)</span>
+    fetch := currency_exchange_rate.RateFetch{Rates: make([]domain.CurrencyExchangeRateFlatten, 0, len(body))}
+    seen := make(map[<span class="k">string</span>]<span class="k">struct</span>{}, len(body))
+    <span class="k">for</span> _, row := <span class="k">range</span> body {
+        rate, err := domain.ParseExchangeRate(row.Rate.String())
+        <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.RateFetch{}, err }
+        date, err := time.Parse(<span class="s">"2006-01-02"</span>, row.Date)
+        <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> currency_exchange_rate.RateFetch{}, err }
+        fetch.Rates = append(fetch.Rates, domain.CurrencyExchangeRateFlatten{
+            FromCurrencyCode: row.Base, ToCurrencyCode: row.QuoteCode, Rate: rate, RecordedAt: date,
+        })
+        seen[row.QuoteCode] = <span class="k">struct</span>{}{}
+    }
+    <span class="k">for</span> _, q := <span class="k">range</span> quotes {
+        <span class="k">if</span> _, ok := seen[q]; !ok {
+            fetch.Skipped = append(fetch.Skipped, currency_exchange_rate.RateSkip{
+                From: base, To: q, Reason: <span class="s">"provider returned no rate"</span>,
+            })
+        }
+    }
+    <span class="k">return</span> fetch, <span class="k">nil</span>
 }</code></pre>
 
     <h3>9.5 <span class="badge mod">Modify</span> <span class="fileref">internal/service/workflow/currency_exchange_rate_workflow.go</span></h3>
@@ -841,42 +983,72 @@ FRANKFURTER_TIMEOUT_SECONDS=15</code></pre>
 }
 
 <span class="k">type</span> SyncResult <span class="k">struct</span> {
-    BaseCurrency <span class="k">string</span>
-    Fetched      <span class="k">int</span>
-    Recorded     <span class="k">int</span>
-    Skipped      <span class="k">int</span>
+    Currencies <span class="k">int</span>
+    Fetched    <span class="k">int</span>
+    Inserted   <span class="k">int</span>
+    Updated    <span class="k">int</span>
+    Skipped    <span class="k">int</span>
+    Warnings   []<span class="k">string</span> <span class="c">// every skip/drop, for the boundary to log at WARN</span>
 }
 
+<span class="c">// SyncDaily records the previous calendar day's rate for every directed pair of the</span>
+<span class="c">// currencies the app holds (N×(N−1) rows) in one batched upsert. It runs at 00:01,</span>
+<span class="c">// when the previous day is fully published.</span>
 <span class="k">func</span> (w *CurrencyExchangeRateWorkflow) SyncDaily(ctx domain.AppContext) (SyncResult, <span class="k">error</span>) {
+    <span class="k">return</span> w.Sync(ctx, time.Now().UTC().AddDate(0, 0, -1))
+}
+
+<span class="c">// Sync records a specific day's rates. It is base-agnostic (the base flag is never</span>
+<span class="c">// consulted) and never drops a pair silently: every skip or unconfigured code is</span>
+<span class="c">// appended to Warnings so the boundary can log it. A zero asOf asks for the latest day.</span>
+<span class="k">func</span> (w *CurrencyExchangeRateWorkflow) Sync(ctx domain.AppContext, asOf time.Time) (SyncResult, <span class="k">error</span>) {
     currencies, err := w.currencyService.List(ctx)
     <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> SyncResult{}, err }
 
-    base, ok := findBase(currencies)
-    <span class="k">if</span> !ok { <span class="k">return</span> SyncResult{}, fmt.Errorf(<span class="s">"no base currency configured"</span>) }
+    result := SyncResult{Currencies: len(currencies)}
+    <span class="k">if</span> len(currencies) &lt; 2 { <span class="k">return</span> result, <span class="k">nil</span> } <span class="c">// nothing to pair</span>
 
     codes := make([]<span class="k">string</span>, 0, len(currencies))
-    <span class="k">for</span> _, c := <span class="k">range</span> currencies {
-        <span class="k">if</span> c.Code != base.Code { codes = append(codes, c.Code) }
-    }
-    result := SyncResult{BaseCurrency: base.Code}
-    <span class="k">if</span> len(codes) == 0 { <span class="k">return</span> result, <span class="k">nil</span> }
+    <span class="k">for</span> _, c := <span class="k">range</span> currencies { codes = append(codes, c.Code) }
+    known := make(map[<span class="k">string</span>]<span class="k">struct</span>{}, len(codes))
+    <span class="k">for</span> _, code := <span class="k">range</span> codes { known[code] = <span class="k">struct</span>{}{} }
 
-    quotes, err := w.rateSource.Latest(ctx, base.Code, codes) <span class="c">// network first…</span>
+    fetch, err := w.rateSource.Rates(ctx, codes, asOf) <span class="c">// network first…</span>
     <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> SyncResult{}, err }
-    result.Fetched = len(quotes)
+    result.Fetched = len(fetch.Rates)
+    result.Skipped = len(fetch.Skipped)
 
-    byCode := indexByCode(currencies)
-    active, err := w.uowManager.Create(ctx) <span class="c">// …then the transaction</span>
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> SyncResult{}, err }
-    <span class="k">for</span> _, q := <span class="k">range</span> quotes {
-        from, okF := byCode[q.From]
-        to, okT := byCode[q.To]
-        <span class="k">if</span> !okF || !okT { <span class="k">continue</span> }
-        written, err := w.exchangeRateService.Record(ctx, from, to, q.Rate, q.Date, active)
-        <span class="k">if</span> err != <span class="k">nil</span> { _ = active.Restore(ctx); <span class="k">return</span> SyncResult{}, err }
-        <span class="k">if</span> written { result.Recorded++ } <span class="k">else</span> { result.Skipped++ }
+    <span class="c">// surface every skip instead of swallowing it</span>
+    <span class="k">for</span> _, s := <span class="k">range</span> fetch.Skipped {
+        result.Warnings = append(result.Warnings, fmt.Sprintf(<span class="s">"no rate for %s→%s on %s: %s"</span>,
+            s.From, s.To, asOf.Format(<span class="s">"2006-01-02"</span>), s.Reason))
     }
+    <span class="k">if</span> len(fetch.Rates) == 0 {
+        result.Warnings = append(result.Warnings,
+            fmt.Sprintf(<span class="s">"provider returned no rates for %s"</span>, asOf.Format(<span class="s">"2006-01-02"</span>)))
+    }
+
+    <span class="c">// keep only pairs whose codes are currencies we actually hold (FK guard)</span>
+    rates := make([]domain.CurrencyExchangeRateFlatten, 0, len(fetch.Rates))
+    <span class="k">for</span> _, q := <span class="k">range</span> fetch.Rates {
+        _, okF := known[q.FromCurrencyCode]
+        _, okT := known[q.ToCurrencyCode]
+        <span class="k">if</span> !okF || !okT {
+            result.Warnings = append(result.Warnings,
+                fmt.Sprintf(<span class="s">"dropped rate %s→%s: currency not configured"</span>, q.FromCurrencyCode, q.ToCurrencyCode))
+            <span class="k">continue</span>
+        }
+        rates = append(rates, q)
+    }
+
+    active, err := w.uowManager.Create(ctx) <span class="c">// …then one transaction</span>
+    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> SyncResult{}, err }
+    counts, err := w.exchangeRateService.UpsertMany(ctx, rates, active) <span class="c">// ONE upsert</span>
+    <span class="k">if</span> err != <span class="k">nil</span> { _ = active.Restore(ctx); <span class="k">return</span> SyncResult{}, err }
     <span class="k">if</span> err := active.Finish(ctx); err != <span class="k">nil</span> { <span class="k">return</span> SyncResult{}, err }
+
+    result.Inserted = counts.Inserted
+    result.Updated = counts.Updated
     <span class="k">return</span> result, <span class="k">nil</span>
 }</code></pre>
 
@@ -891,7 +1063,7 @@ FRANKFURTER_TIMEOUT_SECONDS=15</code></pre>
 
 <span class="k">type</span> Config <span class="k">struct</span> {
     Enabled        <span class="k">bool</span>   <span class="t">`env:"EXCHANGE_RATE_SYNC_ENABLED" bind:"optional" default:"false"`</span>
-    Spec           <span class="k">string</span> <span class="t">`env:"EXCHANGE_RATE_SYNC_CRON" bind:"optional" default:"0 16 * * *"`</span>
+    Spec           <span class="k">string</span> <span class="t">`env:"EXCHANGE_RATE_SYNC_CRON" bind:"optional" default:"1 0 * * *"`</span>
     Timezone       <span class="k">string</span> <span class="t">`env:"EXCHANGE_RATE_SYNC_TZ" bind:"optional" default:"UTC"`</span>
     TimeoutSeconds <span class="k">int64</span>  <span class="t">`env:"EXCHANGE_RATE_SYNC_TIMEOUT_SECONDS" bind:"optional" default:"60"`</span>
     RunOnStart     <span class="k">bool</span>   <span class="t">`env:"EXCHANGE_RATE_SYNC_RUN_ON_START" bind:"optional" default:"false"`</span>
@@ -972,9 +1144,15 @@ CurrencyExchangeRateWorkflow: workflow.NewCurrencyExchangeRateWorkflow(
 <span class="c">// main.go — after buildDeps, before serving</span>
 sched, err := scheduler.New(cfg.Scheduler, <span class="k">func</span>(appCtx domain.AppContext) <span class="k">error</span> {
     result, err := deps.CurrencyExchangeRateWorkflow.SyncDaily(appCtx)
-    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> err }
+    <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">return</span> err } <span class="c">// scheduler logs it at ERROR</span>
+    <span class="c">// never fail silently: log every skip/drop at WARN …</span>
+    <span class="k">for</span> _, warning := <span class="k">range</span> result.Warnings {
+        log.WithContext(appCtx).Warn(<span class="s">"exchange rate sync warning"</span>, slog.String(<span class="s">"detail"</span>, warning))
+    }
+    <span class="c">// …then the summary at INFO</span>
     log.WithContext(appCtx).Info(<span class="s">"exchange rates synced"</span>,
-        slog.Int(<span class="s">"fetched"</span>, result.Fetched), slog.Int(<span class="s">"recorded"</span>, result.Recorded),
+        slog.Int(<span class="s">"currencies"</span>, result.Currencies), slog.Int(<span class="s">"fetched"</span>, result.Fetched),
+        slog.Int(<span class="s">"inserted"</span>, result.Inserted), slog.Int(<span class="s">"updated"</span>, result.Updated),
         slog.Int(<span class="s">"skipped"</span>, result.Skipped))
     <span class="k">return</span> <span class="k">nil</span>
 })
@@ -1002,24 +1180,24 @@ sched, err := scheduler.New(cfg.Scheduler, <span class="k">func</span>(appCtx do
       <thead><tr><th>Area</th><th>Type / location</th><th>Cases</th></tr></thead>
       <tbody>
         <tr>
-          <td><code>Service.Record</code></td>
+          <td><code>Service.UpsertMany</code></td>
           <td>Unit, black-box <span class="fileref">service/currency_exchange_rate/tests/</span></td>
-          <td>happy path (returns <code>true</code>); validation failures (<code>from==to</code>, non-positive rate) never reach the repo; <code>false</code> when the repo reports “already present”; <code>recordedAt</code> is normalized to UTC.</td>
+          <td>empty batch → zero counts without touching the repo; happy batch → forwarded, returns the repo's inserted/updated counts; the first invalid row (a pair with <code>from==to</code>, or a non-positive rate) aborts before any I/O and the repo is never called; <code>RecordedAt</code> is normalized to UTC for every row.</td>
         </tr>
         <tr>
-          <td><code>Workflow.SyncDaily</code></td>
-          <td>Unit, black-box <span class="fileref">service/workflow/tests/</span> (real services over fake repos + a fake <code>RateSource</code>)</td>
-          <td>happy path with mixed written/skipped; <b>the source is called before any UoW is opened</b>; a source error means the UoW is never created; an error mid-loop triggers <code>Restore</code> and not <code>Finish</code>; <code>Finish</code> exactly once on success; missing base currency fails fast; empty currency set short-circuits.</td>
+          <td><code>Workflow.Sync</code> / <code>SyncDaily</code></td>
+          <td>Unit, black-box <span class="fileref">service/workflow/tests/</span> (real services over fake repos + a fake <code>RateSource</code> returning a <code>RateFetch</code>)</td>
+          <td>happy path over an N-currency fake source producing mixed inserted/updated counts; <b>the source is called before any UoW is opened</b>; a source error means the UoW is never created; an <code>UpsertMany</code> error triggers <code>Restore</code> and not <code>Finish</code>; <code>Finish</code> exactly once on success; fewer than two currencies short-circuits; a skipped pair, an empty result, and an unconfigured code each add exactly one entry to <code>Warnings</code> and are <b>not</b> dropped silently; <code>SyncDaily</code> calls the source with yesterday's UTC date while <code>Sync</code> forwards the supplied date unchanged.</td>
         </tr>
         <tr>
           <td><code>frankfurter.Client</code></td>
           <td>Unit, black-box <span class="fileref">adapter/frankfurter/tests/</span> against <code>httptest.NewServer</code></td>
-          <td>happy response → <code>Quote</code> with exact rate/date; <code>404</code>/<code>422</code> → pair omitted, no error; <code>500</code> → error; malformed JSON → error; a 5-decimal rate parses to the right fixed-point value; the request path is <code>/v2/rate/{from}/{to}</code>.</td>
+          <td>one batch per currency is requested with the target date (<code>/v2/rates?base=…&amp;quotes=…&amp;date=…</code>); a zero <code>asOf</code> omits <code>date</code>; the readable pairs come back as <code>domain.CurrencyExchangeRateFlatten</code> values and <b>every requested quote the provider omits becomes a <code>RateSkip</code></b> (never silently dropped); the echoed date becomes <code>RecordedAt</code>; an <b>empty array</b> → empty <code>Rates</code> + one skip per quote; <code>500</code> → error; malformed JSON → error; a 5-decimal rate parses to the right fixed-point value.</td>
         </tr>
         <tr>
-          <td><code>Repository.CreateIfAbsent</code></td>
+          <td><code>Repository.UpsertMany</code></td>
           <td>Integration, <span class="fileref">adapter/gateway/tests/</span> (testcontainers + <code>BeginRollback</code>)</td>
-          <td>insert returns <code>true</code> and round-trips; a second insert of the same pair+instant returns <code>false</code> and leaves one row; a different instant inserts again.</td>
+          <td>a fresh batch reports <code>Inserted = N</code> and round-trips; re-running the same pairs + date reports <code>Updated = N</code> and <b>replaces</b> the rate (still exactly one row per pair); a batch mixing new and existing keys splits the counts correctly.</td>
         </tr>
         <tr>
           <td><code>scheduler.New</code> / lifecycle</td>
@@ -1030,7 +1208,7 @@ sched, err := scheduler.New(cfg.Scheduler, <span class="k">func</span>(appCtx do
     </table>
 
     <pre><code>go test ./...                            <span class="c"># fast (domain, services, workflow, adapter, scheduler)</span>
-go test -tags=integration ./...          <span class="c"># + the CreateIfAbsent gateway test (Docker)</span></code></pre>
+go test -tags=integration ./...          <span class="c"># + the UpsertMany gateway test (Docker)</span></code></pre>
   </section>
 
   <!-- 11 -->
@@ -1050,26 +1228,27 @@ go test -tags=integration ./...          <span class="c"># + the CreateIfAbsent 
       <div class="card">
         <h4>Observability</h4>
         <ul>
-          <li>One structured log line per run at component <code>scheduler</code>, tagged with <code>flow_id</code>, <code>source_type=scheduler</code>.</li>
-          <li>Success log carries <code>fetched</code>/<code>recorded</code>/<code>skipped</code> and <code>duration</code>.</li>
-          <li>Failure logs <code>error</code> + duration; the run is skipped, retried at the next tick.</li>
+          <li>Per-run structured lines tagged with <code>flow_id</code> and <code>source_type=scheduler</code>: <code>scheduler</code> logs start/complete, <code>cmd/server</code> logs the per-run detail.</li>
+          <li><b>WARN</b> for every skip/drop (missing pair, empty day, unconfigured code).</li>
+          <li><b>INFO</b> summary carries <code>currencies</code>/<code>fetched</code>/<code>inserted</code>/<code>updated</code>/<code>skipped</code> and <code>duration</code>.</li>
+          <li><b>ERROR</b> on failure (<code>error</code> + duration); retried at the next tick.</li>
         </ul>
       </div>
       <div class="card">
         <h4>Failure modes</h4>
         <ul>
-          <li><b>Provider down / 5xx / timeout:</b> run aborts, transaction never opens, error logged; next tick retries.</li>
-          <li><b>Unknown currency:</b> that pair is silently skipped; others still record.</li>
-          <li><b>No base currency:</b> fails fast with a clear error (also closes a documented invariant gap).</li>
-          <li><b>Duplicate run:</b> no-ops via the primary key.</li>
+          <li><b>Provider down / 5xx / timeout:</b> run aborts, transaction never opens, error logged at <b>ERROR</b>; next tick retries.</li>
+          <li><b>Unknown currency:</b> reported as a <code>RateSkip</code> and logged at <b>WARN</b> — never silently omitted; the rest of the batch still lands.</li>
+          <li><b>Re-run / duplicate:</b> <b>upserts</b> — that day's rates are replaced (reported as <code>Updated</code>, logged), never a silent no-op.</li>
+          <li><b>Bad row mid-batch:</b> validation fails before I/O, nothing is written, logged at <b>ERROR</b>.</li>
         </ul>
       </div>
       <div class="card">
-        <h4>Multiple replicas</h4>
+        <h4>Volume &amp; multiple replicas</h4>
         <ul>
-          <li>With one server instance, nothing more is needed.</li>
-          <li>If scaled out, each replica would run the job — but the insert is idempotent, so the outcome is still one row per pair/day (wasted HTTP, no corruption).</li>
-          <li>If strict single-runner semantics are later required, swap in a leader-electing scheduler (gocron's elector) — the <code>scheduler</code> package is the only file to change.</li>
+          <li><b>N×(N−1)</b> rows per run — 6/day for 3 currencies, 90/day for 10 — written in <b>one</b> statement.</li>
+          <li>If scaled out, each replica runs the job — but the upsert replaces on conflict, so the outcome is still one row per pair/day (wasted HTTP, no corruption).</li>
+          <li>For strict single-runner semantics later, swap in a leader-electing scheduler — only the <code>scheduler</code> package changes.</li>
         </ul>
       </div>
     </div>
@@ -1082,19 +1261,34 @@ go test -tags=integration ./...          <span class="c"># + the CreateIfAbsent 
       <thead><tr><th>Item</th><th>Impact</th><th>Mitigation / decision needed</th></tr></thead>
       <tbody>
         <tr>
-          <td>Fixed-point precision for extreme currencies</td>
-          <td><code>ExchangeRate</code> is 1e-4; foreign→PLN rates below ~0.00005 round to zero and fail validation.</td>
-          <td>Immune for PLN/EUR/USD. Decide whether to (a) widen the rate scale, (b) store inversely for such currencies, or (c) accept and skip. Recommend deferring until such a currency is actually added.</td>
+          <td>Two rate types coexist</td>
+          <td><code>CurrencyExchangeRate</code> (nested) and <code>CurrencyExchangeRateFlatten</code> (codes) can drift over time.</td>
+          <td>Deliberate split: flatten is the write/port shape; the nested entity is the read/HTTP shape. Both <code>Validate()</code> the same two <code>CHECK</code> constraints, and each doc comment points at the other. The existing entity is <b>not</b> modified, so no consumer breaks.</td>
+        </tr>
+        <tr>
+          <td><code>xmax</code> insert/update split</td>
+          <td><code>RETURNING (xmax = 0)</code> relies on a Postgres tuple-system column.</td>
+          <td>Widely used and stable, but if it ever feels too clever, count <code>RowsAffected()</code> only (inserts + updates) and drop the split — the upsert itself is unaffected.</td>
+        </tr>
+        <tr>
+          <td>Matrix growth with many currencies</td>
+          <td>N HTTP requests and <code>N×(N−1)</code> rows per day (one batch).</td>
+          <td>Trivial at current scale (3 → 3 requests, 6 rows). The single-statement insert stays well under pgx's parameter limit (<code>N×(N−1) × 4</code> params) for any realistic currency set.</td>
+        </tr>
+        <tr>
+          <td>Fixed-point precision for extreme pairs</td>
+          <td><code>ExchangeRate</code> is 1e-4; a direct rate below ~0.00005 rounds to zero and fails validation.</td>
+          <td>Immune for PLN/EUR/USD. Every row is a direct observation (no inversion), so the fix is simply to widen the rate scale or skip such a pair. Recommend deferring until such a currency is actually added.</td>
         </tr>
         <tr>
           <td>Catch-up for missed days</td>
           <td>A server that was offline skips that day's rate.</td>
-          <td>Idempotent design makes <code>EXCHANGE_RATE_SYNC_RUN_ON_START</code> safe. True historical backfill (Frankfurter's <code>?date=</code>) is a future extension to the port.</td>
+          <td>Idempotent design makes <code>EXCHANGE_RATE_SYNC_RUN_ON_START</code> safe (it re-syncs yesterday). Backfill of arbitrary days is already possible: <code>Sync(ctx, d)</code> forwards any date to the date-capable <code>RateSource</code>; a future CLI can loop over a range.</td>
         </tr>
         <tr>
           <td>Which currencies to sync</td>
           <td>Provider may not support a code the app holds.</td>
-          <td>Drive it from the <code>currencies</code> table (not a hardcoded list); treat 404/422 as “skip this pair”.</td>
+          <td>Always derive the set — and therefore the whole pair matrix — from the <code>currencies</code> table; codes the provider omits are simply not recorded.</td>
         </tr>
         <tr>
           <td>Default enabled/disabled</td>
@@ -1124,10 +1318,12 @@ go test -tags=integration ./...          <span class="c"># + the CreateIfAbsent 
         <ul class="check">
           <li><code>go get github.com/robfig/cron/v3@v3.0.1</code></li>
           <li>Add <code>RequestSourceTypeScheduler</code> (+ optional source struct) in domain; extend logger attrs</li>
-          <li>Add <code>RateSource</code>/<code>Quote</code>, <code>Repository.CreateIfAbsent</code>, <code>Service.Record</code></li>
-          <li>Implement <code>CreateIfAbsent</code> in the Postgres repository</li>
-          <li>Add <code>internal/adapter/frankfurter</code> (client + config)</li>
-          <li>Add <code>SyncDaily</code> + <code>RateSource</code> to the workflow constructor</li>
+          <li>Add <code>domain.CurrencyExchangeRateFlatten</code> (new; do <b>not</b> modify <code>CurrencyExchangeRate</code>) with its own <code>Validate()</code></li>
+          <li>Add <code>RateSource</code> (returns a <code>RateFetch</code>), <code>Repository.UpsertMany</code>, <code>Service.UpsertMany</code></li>
+          <li>Implement <code>UpsertMany</code> (multi-row <code>ON CONFLICT … DO UPDATE</code>, <code>RETURNING (xmax = 0)</code>) in the Postgres repository</li>
+          <li>Add <code>internal/adapter/frankfurter</code> (client + config) that returns skipped pairs, not just rates</li>
+          <li>Add <code>Sync</code>/<code>SyncDaily</code> + <code>RateSource</code> to the workflow constructor; collect <code>Warnings</code></li>
+          <li>Log warnings at <b>WARN</b> and failures at <b>ERROR</b> in <code>cmd/server</code>'s job closure</li>
           <li>Add <code>internal/infrastructure/scheduler</code></li>
           <li>Aggregate configs; wire in <code>cmd/server</code></li>
           <li>Update <code>tests/utils.BuildTestDeps</code></li>
@@ -1144,7 +1340,7 @@ go test -tags=integration ./...          <span class="c"># + the CreateIfAbsent 
         <h4>Verification</h4>
         <ul class="check">
           <li><code>go test ./...</code> and <code>go test -tags=integration ./...</code></li>
-          <li>Manual: enable the sync with a near-future spec, watch for one <code>scheduled job completed</code> line, then confirm rows in <code>currency_exchange_rates</code> are dated to the business day</li>
+          <li>Manual: enable the sync with a near-future spec, watch for one <code>scheduled job completed</code> line, then confirm <code>N×(N−1)</code> rows in <code>currency_exchange_rates</code> — both directions of every pair — all dated to the business day, written in a single statement</li>
         </ul>
       </div>
     </div>

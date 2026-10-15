@@ -26,12 +26,16 @@ var (
 )
 
 type fakeRepo struct {
-	byPair      map[string]domain.CurrencyExchangeRate
-	createCalls int
-	createErr   error
-	getErr      error
-	listResult  []domain.CurrencyExchangeRate
-	listErr     error
+	byPair       map[string]domain.CurrencyExchangeRate
+	createCalls  int
+	createErr    error
+	getErr       error
+	listResult   []domain.CurrencyExchangeRate
+	listErr      error
+	upsertCalls  int
+	upsertErr    error
+	upserted     []domain.CurrencyExchangeRateFlatten
+	upsertCounts currency_exchange_rate.UpsertCounts
 }
 
 func newFakeRepo() *fakeRepo {
@@ -45,6 +49,15 @@ func (r *fakeRepo) Create(_ domain.AppContext, e domain.CurrencyExchangeRate, _ 
 	}
 	r.byPair[e.FromCurrency.Code+"->"+e.ToCurrency.Code] = e
 	return nil
+}
+
+func (r *fakeRepo) UpsertMany(_ domain.AppContext, rates []domain.CurrencyExchangeRateFlatten, _ ...unit_of_work.UnitOfWork) (currency_exchange_rate.UpsertCounts, error) {
+	r.upsertCalls++
+	if r.upsertErr != nil {
+		return currency_exchange_rate.UpsertCounts{}, r.upsertErr
+	}
+	r.upserted = append(r.upserted, rates...)
+	return r.upsertCounts, nil
 }
 
 func (r *fakeRepo) GetByCurrencies(_ domain.AppContext, from, to domain.Currency, _ time.Time, _ ...unit_of_work.UnitOfWork) (*domain.CurrencyExchangeRate, error) {
@@ -117,4 +130,73 @@ func TestService_List_IsAPassthrough(t *testing.T) {
 	got, err := svc.List(newAppContext())
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
+}
+
+func TestService_UpsertMany_EmptyBatchIsANoOp(t *testing.T) {
+	repo := newFakeRepo()
+	svc := currency_exchange_rate.NewService(repo)
+
+	counts, err := svc.UpsertMany(newAppContext(), nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, currency_exchange_rate.UpsertCounts{}, counts)
+	assert.Equal(t, 0, repo.upsertCalls, "an empty batch must not reach the repository")
+}
+
+func TestService_UpsertMany_ForwardsBatchAndReturnsRepoCounts(t *testing.T) {
+	repo := newFakeRepo()
+	repo.upsertCounts = currency_exchange_rate.UpsertCounts{Inserted: 4, Updated: 2}
+	svc := currency_exchange_rate.NewService(repo)
+
+	counts, err := svc.UpsertMany(newAppContext(), []domain.CurrencyExchangeRateFlatten{
+		{FromCurrencyCode: "USD", ToCurrencyCode: "EUR", Rate: 9000, RecordedAt: time.Now().UTC()},
+		{FromCurrencyCode: "EUR", ToCurrencyCode: "USD", Rate: 11000, RecordedAt: time.Now().UTC()},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, currency_exchange_rate.UpsertCounts{Inserted: 4, Updated: 2}, counts)
+	assert.Equal(t, 1, repo.upsertCalls)
+	assert.Len(t, repo.upserted, 2)
+}
+
+func TestService_UpsertMany_InvalidRowAbortsBeforeIORepoNeverCalled(t *testing.T) {
+	t.Run("from == to", func(t *testing.T) {
+		repo := newFakeRepo()
+		svc := currency_exchange_rate.NewService(repo)
+
+		_, err := svc.UpsertMany(newAppContext(), []domain.CurrencyExchangeRateFlatten{
+			{FromCurrencyCode: "USD", ToCurrencyCode: "EUR", Rate: 9000, RecordedAt: time.Now().UTC()},
+			{FromCurrencyCode: "USD", ToCurrencyCode: "USD", Rate: 9000, RecordedAt: time.Now().UTC()},
+		})
+
+		assert.Error(t, err)
+		assert.Equal(t, 0, repo.upsertCalls)
+	})
+
+	t.Run("non-positive rate", func(t *testing.T) {
+		repo := newFakeRepo()
+		svc := currency_exchange_rate.NewService(repo)
+
+		_, err := svc.UpsertMany(newAppContext(), []domain.CurrencyExchangeRateFlatten{
+			{FromCurrencyCode: "USD", ToCurrencyCode: "EUR", Rate: 0, RecordedAt: time.Now().UTC()},
+		})
+
+		assert.Error(t, err)
+		assert.Equal(t, 0, repo.upsertCalls)
+	})
+}
+
+func TestService_UpsertMany_NormalizesRecordedAtToUTC(t *testing.T) {
+	repo := newFakeRepo()
+	svc := currency_exchange_rate.NewService(repo)
+
+	zone := time.FixedZone("UTC+2", 2*60*60)
+	_, err := svc.UpsertMany(newAppContext(), []domain.CurrencyExchangeRateFlatten{
+		{FromCurrencyCode: "USD", ToCurrencyCode: "EUR", Rate: 9000, RecordedAt: time.Date(2026, 10, 14, 0, 0, 0, 0, zone)},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, repo.upserted, 1)
+	assert.Equal(t, time.UTC, repo.upserted[0].RecordedAt.Location())
+	assert.True(t, repo.upserted[0].RecordedAt.Equal(time.Date(2026, 10, 13, 22, 0, 0, 0, time.UTC)))
 }

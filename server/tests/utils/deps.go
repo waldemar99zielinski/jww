@@ -1,20 +1,32 @@
 package utils
 
 import (
+	"time"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"jww/internal/adapter/gateway"
 	"jww/internal/adapter/security"
+	"jww/internal/domain"
 	"jww/internal/infrastructure/database"
 	"jww/internal/infrastructure/http_server/kernel"
 	"jww/internal/service/auth"
 	"jww/internal/service/currency"
 	currency_exchange_rate "jww/internal/service/currency_exchange_rate"
 	"jww/internal/service/transaction"
-	"jww/internal/service/transactioncategory"
+	"jww/internal/service/transaction_category"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
 )
+
+// stubRateSource satisfies currency_exchange_rate.RateSource for the in-process
+// journey tests. They exercise HTTP routes and never call SyncDaily, so it
+// returns nothing and never errors.
+type stubRateSource struct{}
+
+func (stubRateSource) Rates(domain.AppContext, []string, time.Time) (currency_exchange_rate.RateFetch, error) {
+	return currency_exchange_rate.RateFetch{}, nil
+}
 
 // BuildTestDeps wires every repository, service, and workflow against pool —
 // the same construction cmd/server/deps.go's buildDeps does. Duplicated here
@@ -39,7 +51,7 @@ func BuildTestDeps(pool *pgxpool.Pool, jwtSecret string) *kernel.Deps {
 	userService := user.NewService(userRepo, passwordHasher, uowManager)
 	currencyService := currency.NewService(currencyRepo, uowManager)
 	exchangeRateService := currency_exchange_rate.NewService(exchangeRateRepo)
-	categoryService := transactioncategory.NewService(categoryRepo, uowManager)
+	categoryService := transaction_category.NewService(categoryRepo, uowManager)
 	transactionService := transaction.NewService(transactionRepo, uowManager)
 
 	return &kernel.Deps{
@@ -47,7 +59,7 @@ func BuildTestDeps(pool *pgxpool.Pool, jwtSecret string) *kernel.Deps {
 		UserService:                  userService,
 		SignupWorkflow:               workflow.NewSignupWorkflow(userService),
 		CurrencyService:              currencyService,
-		CurrencyExchangeRateWorkflow: workflow.NewCurrencyExchangeRateWorkflow(currencyService, exchangeRateService, uowManager),
+		CurrencyExchangeRateWorkflow: workflow.NewCurrencyExchangeRateWorkflow(currencyService, exchangeRateService, stubRateSource{}, uowManager),
 		TransactionCategoryService:   categoryService,
 		TransactionService:           transactionService,
 		TransactionWorkflow:          workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, uowManager),

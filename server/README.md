@@ -11,6 +11,8 @@ Backend for Joint Wallet Watch, a personal finance Telegram bot + Mini App, writ
 - **Database:** [pgx](https://github.com/jackc/pgx) (`pgxpool`), SQL built with [Squirrel](https://github.com/Masterminds/squirrel) — no ORM
 - **Migrations:** [goose](https://github.com/pressly/goose), embedded in the binary and applied on server startup (the CLI still works for manual up/down/status)
 - **Auth:** `golang-jwt/jwt/v5`, `golang.org/x/crypto/argon2` (Argon2id)
+- **Scheduling:** [robfig/cron/v3](https://github.com/robfig/cron) (daily exchange-rate sync; confined to `internal/infrastructure/scheduler`)
+- **Exchange rates:** [Frankfurter](https://frankfurter.dev) (no API key; the `RateSource` adapter lives in `internal/adapter/frankfurter`)
 - **UUIDs:** `google/uuid`
 - **Money/rates:** `domain.Money` / `domain.ExchangeRate`, plain `int64` fixed-point types
 
@@ -22,7 +24,8 @@ cmd/server                              composition root — imports everything,
      ├─ kernel                          Deps, middleware, request context, respond helpers
      └─ routers/<resource>              Mount(public, protected, deps) + one handler per file
 └─ internal/infrastructure/database     pgxpool + concrete UnitOfWork
-└─ internal/adapter/{gateway,schema,security}
+└─ internal/infrastructure/scheduler    cron-scheduled jobs (robfig/cron)
+└─ internal/adapter/{gateway,schema,security,frankfurter}
 └─ internal/service/{...} + workflow    use cases; each service owns its repository port
 └─ internal/domain                      plain structs + Validate(); imports nothing internal
 └─ utils/{configuration,logger}
@@ -46,7 +49,7 @@ layer defines the interfaces (ports) it needs; outer layers implement them
 (dependency inversion).
 
 ```
-Frameworks & Drivers   cmd/server, internal/infrastructure/{database,http_server}, utils/*   (outermost)
+Frameworks & Drivers   cmd/server, internal/infrastructure/{database,http_server,scheduler}, utils/*   (outermost)
 Interface Adapters     internal/adapter/*, http_server/kernel, http_server/routers
 Use Cases              internal/service/*, internal/service/workflow
 Entities               internal/domain                                                     (innermost)
@@ -57,7 +60,7 @@ Entities               internal/domain                                          
 | **Entities** (enterprise rules) | `internal/domain` | structs, `Validate()`, `Money`/`ExchangeRate`, typed errors, enums, `AppContext` | I/O, SQL, HTTP, logging, any other layer import |
 | **Use Cases** (application rules) | `internal/service/<resource>`, `internal/service/workflow` | a resource's operations + its repository **port**; multi-service orchestration; transaction demarcation | HTTP/JSON, pgx, sibling-service imports (only `workflow` composes services) |
 | **Interface Adapters** | `internal/adapter/{gateway,schema,security}`, `http_server/kernel`, `http_server/routers` | controllers/handlers, presenters/DTOs, repository implementations, port adapters, middleware | importing `cmd`, other adapters, or infrastructure |
-| **Frameworks & Drivers** | `cmd/server`, `internal/infrastructure/{database,http_server}`, `utils/*` | composition root, DB pool, HTTP server assembly, env binder, logger | business logic |
+| **Frameworks & Drivers** | `cmd/server`, `internal/infrastructure/{database,http_server,scheduler}`, `utils/*` | composition root, DB pool, HTTP server assembly, cron scheduling, env binder, logger | business logic |
 
 ### Decision guide — "where does my new code go?"
 
@@ -99,7 +102,8 @@ one of the two (`public.Post(...)` vs `protected.Get(...)`).
 - **Standard JSON contract**: every 2xx body is `{"data": ...}` (`kernel.WriteJSON`/`WriteOK`/`WriteCreated`, or `kernel.WriteNoContent` for 204); every non-2xx body is `{"error": {"code", "message", "details?}}` (`kernel.WriteError`/`WriteBadRequest`). `details` carries field-level validation failures.
 - **No request-validation library**: each request schema has `Validate() error`, called by hand in the handler before the service. Failures → `400 {"error": {"code": "bad_request", "message": "..."}}`.
 - **Auth**: missing/malformed `Authorization` header → `401` (via `domain.AuthenticationError`) with `WWW-Authenticate: Bearer`; `/v1/auth/login` is public, everything else is protected. New users are created out of band via [`scripts/signup`](scripts/signup/README.md) or [`scripts/bootstrap`](scripts/bootstrap/README.md).
-- **Config lives next to what it configures** (`http_server.Config`, `database.Config`, `security.Config`, `logger.Config`), each loaded via `utils/configuration.Load[T]()`; `cmd/server/config.go` aggregates them.
+- **Config lives next to what it configures** (`http_server.Config`, `database.Config`, `security.Config`, `logger.Config`, `scheduler.Config`, `frankfurter.Config`), each loaded via `utils/configuration.Load[T]()`; `cmd/server/config.go` aggregates them.
+- **The daily exchange-rate sync is opt-in** (`EXCHANGE_RATE_SYNC_ENABLED`, off by default). When enabled, `scheduler` fires at 00:01, `CurrencyExchangeRateWorkflow.SyncDaily` fetches the previous day's full directed matrix among every held currency from Frankfurter, and writes it in one upsert. No migration is involved — it reuses `currency_exchange_rates`. See [`internal/infrastructure/scheduler`](internal/infrastructure/scheduler/README.md) and [`internal/adapter/frankfurter`](internal/adapter/frankfurter/README.md).
 - **Error flow**: gateway returns `(nil, nil)` for absent rows → service raises a `domain.DomainError` carrying a `domain.ErrorKind` → `kernel.WriteError` maps the kind (validation→400, unauthorized→401, not found→404, conflict→409, internal/unknown→500) and writes the standard error envelope.
 - **Transaction demarcation** lives in services (`Update`/`Delete`) and workflows (multi-service ops), never in handlers.
 - **Logging lives at the boundary only** — `cmd/server`, `internal/infrastructure/{database,http_server}`, `scripts/*`. Never in `internal/domain`/`internal/service`/`internal/adapter`: those return errors, the boundary logs them once with full request context. Logging must also stay independent of response/return-value assembly — `http_server/kernel/respond.go`'s `Write*` helpers never gain a logging side effect. See [`utils/logger`](utils/logger/README.md).

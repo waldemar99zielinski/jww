@@ -1,6 +1,6 @@
-// Package transactioncategory implements CRUD use cases for transaction
+// Package transaction_category implements CRUD use cases for transaction
 // categories, keyed by uuid.UUID.
-package transactioncategory
+package transaction_category
 
 import (
 	"github.com/google/uuid"

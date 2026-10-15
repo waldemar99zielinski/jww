@@ -30,7 +30,7 @@ the call succeeds and the boundary's existing log line already covers it).
 - `New() Logger`, `With(labels ...slog.Attr) Logger`, `Slog() *slog.Logger`.
 - `(Logger) WithComponent(name string) Logger` — adds `component=<name>`.
 - `(Logger) Slog() *slog.Logger` — base + accumulated labels.
-- `(Logger) WithContext(ctx domain.AppContext) *slog.Logger` — base + labels + `flow_id`, `source_type`, `http_endpoint`, `user_id` (when present).
+- `(Logger) WithContext(ctx domain.AppContext) *slog.Logger` — base + labels + `flow_id`, `source_type`, `http_endpoint` (when the source type is `http`), `job` (when the source type is `scheduler`), `user_id` (when present).
 
 Config: `LOG_LEVEL` (`info`|`debug`|`warn`|`error`), `LOG_PRETTY`.
 

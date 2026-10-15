@@ -12,6 +12,7 @@ import (
 
 	"jww/internal/adapter/gateway"
 	"jww/internal/domain"
+	currency_exchange_rate "jww/internal/service/currency_exchange_rate"
 	"jww/internal/service/unit_of_work"
 	"jww/internal/tests/pgtest"
 )
@@ -136,4 +137,77 @@ func TestPostgresCurrencyExchangeRateRepository_ConstraintViolations(t *testing.
 		err := repo.Create(appCtx, domain.CurrencyExchangeRate{FromCurrency: from, ToCurrency: to, Rate: 0, RecordedAt: time.Now()}, uow)
 		assert.Error(t, err, "currency_exchange_rates_rate_positive should reject rate <= 0")
 	})
+}
+
+func TestPostgresCurrencyExchangeRateRepository_UpsertMany_FreshBatchInserts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	appCtx := pgtest.AppContext(ctx)
+	uow := pgtest.BeginRollback(t, pool, appCtx)
+	seedCurrencyPair(t, appCtx, uow, "ZSM", "ZSN")
+
+	repo := gateway.NewPostgresCurrencyExchangeRateRepository(pool)
+	asOf := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+
+	counts, err := repo.UpsertMany(appCtx, []domain.CurrencyExchangeRateFlatten{
+		{FromCurrencyCode: "ZSM", ToCurrencyCode: "ZSN", Rate: 12345, RecordedAt: asOf},
+		{FromCurrencyCode: "ZSN", ToCurrencyCode: "ZSM", Rate: 8100, RecordedAt: asOf},
+	}, uow)
+	require.NoError(t, err)
+	assert.Equal(t, currency_exchange_rate.UpsertCounts{Inserted: 2}, counts)
+
+	list, err := repo.List(appCtx, uow)
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+}
+
+func TestPostgresCurrencyExchangeRateRepository_UpsertMany_ReRunReplacesInPlace(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	appCtx := pgtest.AppContext(ctx)
+	uow := pgtest.BeginRollback(t, pool, appCtx)
+	seedCurrencyPair(t, appCtx, uow, "ZSO", "ZSP")
+
+	repo := gateway.NewPostgresCurrencyExchangeRateRepository(pool)
+	asOf := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+
+	_, err := repo.UpsertMany(appCtx, []domain.CurrencyExchangeRateFlatten{
+		{FromCurrencyCode: "ZSO", ToCurrencyCode: "ZSP", Rate: 10000, RecordedAt: asOf},
+	}, uow)
+	require.NoError(t, err)
+
+	counts, err := repo.UpsertMany(appCtx, []domain.CurrencyExchangeRateFlatten{
+		{FromCurrencyCode: "ZSO", ToCurrencyCode: "ZSP", Rate: 20000, RecordedAt: asOf},
+	}, uow)
+	require.NoError(t, err)
+	assert.Equal(t, currency_exchange_rate.UpsertCounts{Updated: 1}, counts, "a re-run replaces, never duplicates")
+
+	list, err := repo.List(appCtx, uow)
+	require.NoError(t, err)
+	require.Len(t, list, 1, "still exactly one row per pair per business day")
+	assert.Equal(t, domain.ExchangeRate(20000), list[0].Rate)
+}
+
+func TestPostgresCurrencyExchangeRateRepository_UpsertMany_SplitsMixedCounts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	appCtx := pgtest.AppContext(ctx)
+	uow := pgtest.BeginRollback(t, pool, appCtx)
+	seedCurrencyPair(t, appCtx, uow, "ZQA", "ZQB")
+	seedCurrencyPair(t, appCtx, uow, "ZQC", "ZQD")
+
+	repo := gateway.NewPostgresCurrencyExchangeRateRepository(pool)
+	asOf := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+
+	_, err := repo.UpsertMany(appCtx, []domain.CurrencyExchangeRateFlatten{
+		{FromCurrencyCode: "ZQA", ToCurrencyCode: "ZQB", Rate: 10000, RecordedAt: asOf},
+	}, uow)
+	require.NoError(t, err)
+
+	counts, err := repo.UpsertMany(appCtx, []domain.CurrencyExchangeRateFlatten{
+		{FromCurrencyCode: "ZQA", ToCurrencyCode: "ZQB", Rate: 11000, RecordedAt: asOf}, // existing
+		{FromCurrencyCode: "ZQB", ToCurrencyCode: "ZQC", Rate: 12000, RecordedAt: asOf}, // new
+	}, uow)
+	require.NoError(t, err)
+	assert.Equal(t, currency_exchange_rate.UpsertCounts{Inserted: 1, Updated: 1}, counts)
 }

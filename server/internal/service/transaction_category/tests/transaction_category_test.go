@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"jww/internal/domain"
-	"jww/internal/service/transactioncategory"
+	"jww/internal/service/transaction_category"
 	"jww/internal/service/unit_of_work"
 )
 
@@ -111,7 +111,7 @@ func (m *fakeUoWManager) last() *fakeUoW {
 
 func TestService_Create_HappyPath(t *testing.T) {
 	repo := newFakeRepo()
-	svc := transactioncategory.NewService(repo, &fakeUoWManager{})
+	svc := transaction_category.NewService(repo, &fakeUoWManager{})
 
 	got, err := svc.Create(newAppContext(), domain.TransactionCategoryTypeExpense, "Groceries", 0)
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestService_Create_HappyPath(t *testing.T) {
 
 func TestService_Create_ValidationFailureNeverCallsRepo(t *testing.T) {
 	repo := newFakeRepo()
-	svc := transactioncategory.NewService(repo, &fakeUoWManager{})
+	svc := transaction_category.NewService(repo, &fakeUoWManager{})
 
 	_, err := svc.Create(newAppContext(), domain.TransactionCategoryTypeExpense, "", -1)
 	assert.Error(t, err)
@@ -132,7 +132,7 @@ func TestService_Create_ValidationFailureNeverCallsRepo(t *testing.T) {
 
 func TestService_GetByID_NotFoundTranslatesNilNilToTypedError(t *testing.T) {
 	repo := newFakeRepo()
-	svc := transactioncategory.NewService(repo, &fakeUoWManager{})
+	svc := transaction_category.NewService(repo, &fakeUoWManager{})
 
 	_, err := svc.GetByID(newAppContext(), uuid.New())
 	require.Error(t, err)
@@ -146,7 +146,7 @@ func TestService_ListByType_FiltersByTypeAndActive(t *testing.T) {
 	inactive := domain.TransactionCategory{ID: uuid.New(), Type: domain.TransactionCategoryTypeExpense, Name: "Inactive", Active: false}
 	income := domain.TransactionCategory{ID: uuid.New(), Type: domain.TransactionCategoryTypeIncome, Name: "Income", Active: true}
 	repo := newFakeRepo(active, inactive, income)
-	svc := transactioncategory.NewService(repo, &fakeUoWManager{})
+	svc := transaction_category.NewService(repo, &fakeUoWManager{})
 
 	got, err := svc.ListByType(newAppContext(), domain.TransactionCategoryTypeExpense, true)
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestService_Update_HappyPathFinishesTransaction(t *testing.T) {
 	existing := domain.TransactionCategory{ID: uuid.New(), Type: domain.TransactionCategoryTypeExpense, Name: "Old", Active: true}
 	repo := newFakeRepo(existing)
 	manager := &fakeUoWManager{}
-	svc := transactioncategory.NewService(repo, manager)
+	svc := transaction_category.NewService(repo, manager)
 
 	updated := existing
 	updated.Name = "New"
@@ -172,7 +172,7 @@ func TestService_Update_HappyPathFinishesTransaction(t *testing.T) {
 func TestService_Update_NotFoundRestoresTransaction(t *testing.T) {
 	repo := newFakeRepo()
 	manager := &fakeUoWManager{}
-	svc := transactioncategory.NewService(repo, manager)
+	svc := transaction_category.NewService(repo, manager)
 
 	_, err := svc.Update(newAppContext(), domain.TransactionCategory{ID: uuid.New(), Name: "Ghost"})
 	require.Error(t, err)
@@ -183,7 +183,7 @@ func TestService_Update_NotFoundRestoresTransaction(t *testing.T) {
 func TestService_Update_ValidationFailureNeverOpensTransaction(t *testing.T) {
 	repo := newFakeRepo()
 	manager := &fakeUoWManager{}
-	svc := transactioncategory.NewService(repo, manager)
+	svc := transaction_category.NewService(repo, manager)
 
 	_, err := svc.Update(newAppContext(), domain.TransactionCategory{ID: uuid.New(), Name: ""})
 	assert.Error(t, err)
@@ -195,7 +195,7 @@ func TestService_Update_RepoErrorRestoresTransaction(t *testing.T) {
 	repo := newFakeRepo(existing)
 	repo.updateErr = errors.New("boom")
 	manager := &fakeUoWManager{}
-	svc := transactioncategory.NewService(repo, manager)
+	svc := transaction_category.NewService(repo, manager)
 
 	updated := existing
 	updated.Name = "New"
@@ -209,7 +209,7 @@ func TestService_Delete_HappyPathFinishesTransaction(t *testing.T) {
 	existing := domain.TransactionCategory{ID: uuid.New(), Name: "Doomed"}
 	repo := newFakeRepo(existing)
 	manager := &fakeUoWManager{}
-	svc := transactioncategory.NewService(repo, manager)
+	svc := transaction_category.NewService(repo, manager)
 
 	err := svc.Delete(newAppContext(), existing)
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestService_Delete_HappyPathFinishesTransaction(t *testing.T) {
 func TestService_Delete_NotFoundRestoresTransaction(t *testing.T) {
 	repo := newFakeRepo()
 	manager := &fakeUoWManager{}
-	svc := transactioncategory.NewService(repo, manager)
+	svc := transaction_category.NewService(repo, manager)
 
 	err := svc.Delete(newAppContext(), domain.TransactionCategory{ID: uuid.New()})
 	require.Error(t, err)

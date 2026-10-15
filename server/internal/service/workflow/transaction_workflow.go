@@ -8,7 +8,7 @@ import (
 	"jww/internal/domain"
 	"jww/internal/service/currency"
 	"jww/internal/service/transaction"
-	"jww/internal/service/transactioncategory"
+	"jww/internal/service/transaction_category"
 	"jww/internal/service/unit_of_work"
 	"jww/internal/service/user"
 )
@@ -19,7 +19,7 @@ import (
 // to do inline, composing four services directly in the HTTP layer.
 type TransactionWorkflow struct {
 	currencyService    *currency.Service
-	categoryService    *transactioncategory.Service
+	categoryService    *transaction_category.Service
 	userService        *user.Service
 	transactionService *transaction.Service
 	uowManager         unit_of_work.Manager
@@ -27,7 +27,7 @@ type TransactionWorkflow struct {
 
 func NewTransactionWorkflow(
 	currencyService *currency.Service,
-	categoryService *transactioncategory.Service,
+	categoryService *transaction_category.Service,
 	userService *user.Service,
 	transactionService *transaction.Service,
 	uowManager unit_of_work.Manager,

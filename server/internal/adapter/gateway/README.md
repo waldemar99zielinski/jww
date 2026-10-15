@@ -56,7 +56,11 @@ a real Postgres via [`internal/tests/pgtest`](../../tests/pgtest/README.md)
 Run with `go test -tags=integration ./internal/adapter/gateway/...` (needs
 Docker). Every repository method needs: a round-trip (Create+Get) test,
 `(nil, nil)` on a genuine miss, and a constraint-violation test for any
-unique/FK/CHECK constraint the migration declares on its table. Two gotchas
+unique/FK/CHECK constraint the migration declares on its table.
+`UpsertMany` additionally needs: a fresh batch reporting `Inserted = N`; a
+re-run of the same pairs+date reporting `Updated = N` while still leaving
+exactly one row per pair (the bulk `ON CONFLICT … DO UPDATE` replaces, never
+duplicates); and a mixed batch splitting the counts. Two gotchas
 worth remembering (both bit earlier passes at this suite):
 
 - A constraint violation aborts the rest of that Postgres transaction

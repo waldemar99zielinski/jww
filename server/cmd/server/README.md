@@ -6,9 +6,10 @@
 
 ## Files
 
-- `main.go` — `run()` performs, in order: `loadDotEnv(".env")` → `LoadConfig()` → `logger.Configure(cfg.Logger)` → `signal.NotifyContext(SIGINT, SIGTERM)` → `database.NewPool(ctx, cfg.Database)` (`defer pool.Close()`) → `database.Migrate(ctx, pool)` (applies embedded goose migrations) → `buildDeps(...)` → `httpserver.New(deps, cfg.Http)` → serve in a goroutine (select on `errCh` vs `ctx.Done()`) → `srv.Shutdown(10s timeout)`. `main()` logs and `os.Exit(1)` on error.
-- `config.go` — `type Config { Http http_server.Config; Database database.Config; Auth security.Config; Logger logger.Config }` and `LoadConfig()` which calls each module's own loader and aggregates.
-- `deps.go` — `buildDeps(pool, authConfig, corsOrigins, maxBodyBytes) *kernel.Deps`: builds the UoW manager, hasher, token service, all repositories, all services, all workflows, then fills `kernel.Deps`.
+- `main.go` — `run()` performs, in order: `loadDotEnv(".env")` → `LoadConfig()` → `logger.Configure(cfg.Logger)` → `signal.NotifyContext(SIGINT, SIGTERM)` → `database.NewPool(ctx, cfg.Database)` (`defer pool.Close()`) → `database.Migrate(ctx, pool)` (applies embedded goose migrations) → `buildDeps(...)` → `startScheduler(cfg.Scheduler, deps.CurrencyExchangeRateWorkflow)` → `httpserver.New(deps, cfg.Http)` → serve in a goroutine (select on `errCh` vs `ctx.Done()`) → `stopScheduler(10s)` then `srv.Shutdown(10s timeout)`. `main()` logs and `os.Exit(1)` on error.
+- `config.go` — `type Config { Http http_server.Config; Database database.Config; Auth security.Config; Logger logger.Config; Scheduler scheduler.Config; Frankfurter frankfurter.Config }` and `LoadConfig()` which calls each module's own loader and aggregates.
+- `deps.go` — `buildDeps(pool, authConfig, frankfurterConfig, corsOrigins, maxBodyBytes) *kernel.Deps`: builds the UoW manager, hasher, token service, the Frankfurter `RateSource`, all repositories, all services, all workflows, then fills `kernel.Deps`.
+- `scheduler.go` — `startScheduler(cfg, rateWorkflow) (stop func(context.Context), error)`: builds the exchange-rate sync scheduler and its job closure, starts it when `cfg.Scheduler.Enabled`, and returns a graceful-shutdown `stop`. The job runs `CurrencyExchangeRateWorkflow.SyncDaily`, logs each `SyncResult.Warning` at **WARN** and the run summary at **INFO**, and the `stop` logs a shutdown failure at **WARN**. Keeping it here leaves `main.go` to a couple of lines.
 - `dotenv.go` — `loadDotEnv(path)`: hand-rolled parser; real environment always wins; a missing `.env` is not an error.
 
 ## Rules

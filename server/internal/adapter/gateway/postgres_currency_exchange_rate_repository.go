@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"jww/internal/domain"
+	currency_exchange_rate "jww/internal/service/currency_exchange_rate"
 	"jww/internal/service/unit_of_work"
 )
 
@@ -72,6 +73,61 @@ func (r *PostgresCurrencyExchangeRateRepository) Create(ctx domain.AppContext, e
 	}
 	_, err = db.Exec(ctx.Context(), sql, args...)
 	return err
+}
+
+// UpsertMany writes the whole batch as one multi-row INSERT, replacing the
+// rate of any row whose (from, to, recorded_at) already exists. RETURNING
+// (xmax = 0) distinguishes fresh inserts from replaced rows so callers get
+// inserted/updated counts back. Within one batch every row shares the same
+// business-date recorded_at while each directed pair is unique, so the
+// conflict target never repeats inside a single statement.
+func (r *PostgresCurrencyExchangeRateRepository) UpsertMany(ctx domain.AppContext, rates []domain.CurrencyExchangeRateFlatten, uow ...unit_of_work.UnitOfWork) (currency_exchange_rate.UpsertCounts, error) {
+	if len(rates) == 0 {
+		return currency_exchange_rate.UpsertCounts{}, nil
+	}
+	db, err := dbFromUnitOfWork(r.db, uow...)
+	if err != nil {
+		return currency_exchange_rate.UpsertCounts{}, err
+	}
+
+	insert := psql.Insert("currency_exchange_rates").
+		Columns("from_currency_code", "to_currency_code", "rate", "recorded_at")
+	for _, rate := range rates {
+		rateNumeric, err := exchangeRateToNumeric(rate.Rate)
+		if err != nil {
+			return currency_exchange_rate.UpsertCounts{}, err
+		}
+		insert = insert.Values(rate.FromCurrencyCode, rate.ToCurrencyCode, rateNumeric, rate.RecordedAt)
+	}
+	sql, args, err := insert.
+		Suffix("ON CONFLICT (from_currency_code, to_currency_code, recorded_at) DO UPDATE SET rate = EXCLUDED.rate RETURNING (xmax = 0)").
+		ToSql()
+	if err != nil {
+		return currency_exchange_rate.UpsertCounts{}, err
+	}
+
+	rows, err := db.Query(ctx.Context(), sql, args...)
+	if err != nil {
+		return currency_exchange_rate.UpsertCounts{}, err
+	}
+	defer rows.Close()
+
+	var counts currency_exchange_rate.UpsertCounts
+	for rows.Next() {
+		var inserted bool
+		if err := rows.Scan(&inserted); err != nil {
+			return counts, err
+		}
+		if inserted {
+			counts.Inserted++
+		} else {
+			counts.Updated++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return counts, err
+	}
+	return counts, nil
 }
 
 func (r *PostgresCurrencyExchangeRateRepository) GetByCurrencies(ctx domain.AppContext, from, to domain.Currency, asOf time.Time, uow ...unit_of_work.UnitOfWork) (*domain.CurrencyExchangeRate, error) {

@@ -10,7 +10,7 @@ import (
 	"jww/internal/domain"
 	"jww/internal/service/currency"
 	"jww/internal/service/transaction"
-	"jww/internal/service/transactioncategory"
+	transactioncategory "jww/internal/service/transaction_category"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
 )
