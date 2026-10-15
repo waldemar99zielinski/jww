@@ -1,0 +1,20 @@
+# OS / editor cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Python (server/ also has its own, more specific .gitignore)
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Secrets — never commit these
+.env
+*.env.local
+
+# Xcode / iOS
+client/ios/**/xcuserdata/
+client/ios/**/*.xcuserstate
+client/ios/.build/
+client/ios/DerivedData/

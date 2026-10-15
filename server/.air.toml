@@ -1,0 +1,26 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ./cmd/server"
+  bin = "./tmp/server"
+  # go  = rebuild on code changes
+  # sql = rebuild so the embedded migrations (//go:embed *.sql) are recompiled
+  # env = restart on .env edits, which are read once at startup
+  include_ext = ["go", "sql", "env"]
+  exclude_dir = ["tmp", "bin", "vendor"]
+  exclude_regex = ["_test.go"]
+  delay = 300
+  stop_on_error = true
+  send_interrupt = true
+  kill_delay = "500ms"
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

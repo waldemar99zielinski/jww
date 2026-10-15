@@ -1,0 +1,12 @@
+{
+  "folders": [
+    { "name": "server", "path": "server" },
+    { "name": "development", "path": "development" },
+    { "name": "client", "path": "client" }
+  ],
+  "settings": {
+    "gopls": {
+      "buildFlags": ["-tags=integration,e2e"]
+    }
+  }
+}

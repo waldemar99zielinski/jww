@@ -1,0 +1,191 @@
+@import 'tailwindcss';
+
+/* Ash & Linen — the app's single, curated theme (no light variant). Dark grey, black, white, and light beige only — no browns. */
+:root {
+  --ink: #f5f5f3;
+  --ink-soft: #b4b4b1;
+  --muted: #828280;
+  --paper: #121212;
+  --surface: #1c1c1d;
+  --surface-sunken: #161616;
+  --line: #2f2f2f;
+  --accent: #e5e1d4;
+  --accent-strong: #f3f1e9;
+  --accent-soft: #2e2d29;
+  --on-accent: #121212;
+  --critical: #e2574c;
+  --critical-soft: #2c1c1a;
+  --cat-1: #d9552e; /* groceries */
+  --cat-2: #2ba89c; /* health */
+  --cat-3: #5b8fef; /* transport */
+  --cat-4: #cb5ba8; /* entertainment */
+  --cat-5: #8a9388; /* rent / other */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 22px 40px -16px rgba(0, 0, 0, 0.65);
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --font-sans: -apple-system, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Components below style things Tailwind utilities alone don't express cleanly:
+   per-category tinting via a runtime --chip variable, and the bottom tab bar. */
+
+.chip {
+  --chip: var(--ink-soft);
+}
+.chip svg {
+  color: var(--chip);
+}
+.chip.active {
+  border-color: var(--chip);
+  background: color-mix(in srgb, var(--chip) 14%, var(--surface));
+  color: var(--ink);
+}
+
+.category-tint {
+  background: color-mix(in srgb, var(--tint) 16%, var(--surface));
+  color: var(--tint);
+}
+
+.bar-fill {
+  background: var(--tint, var(--ink));
+}
+.bar-fill.critical {
+  background: var(--critical);
+}
+
+.tabbar {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+/* Bottom sheet height cap: prefer dvh so it tracks the mobile URL bar, but
+   fall back to vh for browsers/webviews without dynamic viewport units —
+   without a bounded height the sheet body can't scroll and gets cut off. */
+.sheet-panel {
+  max-height: 90vh;
+}
+@supports (height: 100dvh) {
+  .sheet-panel {
+    max-height: 90dvh;
+  }
+}
+
+.hero-card {
+  background: linear-gradient(155deg, var(--accent) 0%, var(--accent-strong) 100%);
+}
+
+/* Hide scrollbar chrome on internal scroll regions (e.g. the desktop main column)
+   while keeping the area scrollable. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .screen-enter {
+    animation: screen-in 180ms ease both;
+  }
+}
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* "Horizontal Unfold" wordmark — see src/components/Logo.tsx. JWW holds, then unfolds into
+   Joint Wallet Watch once (simultaneously across all three words, no stagger) and stays —
+   the animation itself is plain CSS transitions driven by inline styles, not keyframes. */
+.jww-wordmark {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+}
+
+/* Page/suspense fallback: a coin drops into a gently bobbing wallet. */
+.wallet-loader .wallet-body {
+  animation: wallet-bob 1.6s ease-in-out infinite;
+}
+.wallet-loader .wallet-coin {
+  animation: wallet-coin-drop 1.6s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+@keyframes wallet-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+@keyframes wallet-coin-drop {
+  0% {
+    transform: translate(-50%, -14px) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  55% {
+    transform: translate(-50%, 8px) scale(1);
+    opacity: 1;
+  }
+  72% {
+    transform: translate(-50%, 12px) scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-50%, 12px) scale(0.8);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
