@@ -1,14 +1,18 @@
 package workflow_test
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
 
 	"jww/internal/domain"
 	currency_exchange_rate "jww/internal/service/currency_exchange_rate"
+	"jww/internal/service/object_storage"
 	"jww/internal/service/transaction"
+	"jww/internal/service/transaction_attachment"
 	"jww/internal/service/unit_of_work"
 )
 
@@ -162,7 +166,7 @@ func (r *fakeExchangeRateRepo) GetByCurrencies(_ domain.AppContext, from, to dom
 	return nil, nil
 }
 
-func (r *fakeExchangeRateRepo) List(domain.AppContext, ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
+func (r *fakeExchangeRateRepo) List(domain.AppContext, *currency_exchange_rate.Filter, ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
 	if r.listErr != nil {
 		return nil, r.listErr
 	}
@@ -298,6 +302,15 @@ type fakeTransactionRepo struct {
 	listResult []domain.Transaction
 	listErr    error
 	listCalled int
+	listFilter *transaction.Filter
+
+	getResult *domain.Transaction
+	getErr    error
+	deleteErr error
+
+	updated   []domain.Transaction
+	deleted   []domain.Transaction
+	deleteUOW unit_of_work.UnitOfWork
 }
 
 func (r *fakeTransactionRepo) Create(
@@ -332,22 +345,188 @@ func (r *fakeTransactionRepo) Create(
 	}, nil
 }
 
-func (r *fakeTransactionRepo) GetByID(domain.AppContext, int64, ...unit_of_work.UnitOfWork) (*domain.Transaction, error) {
-	return nil, nil
+func (r *fakeTransactionRepo) GetByID(_ domain.AppContext, _ int64, _ ...unit_of_work.UnitOfWork) (*domain.Transaction, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	return r.getResult, nil
 }
 
-func (r *fakeTransactionRepo) List(_ domain.AppContext, _ *transaction.Filter, _ ...unit_of_work.UnitOfWork) ([]domain.Transaction, error) {
+func (r *fakeTransactionRepo) List(_ domain.AppContext, filter *transaction.Filter, _ ...unit_of_work.UnitOfWork) ([]domain.Transaction, error) {
 	r.listCalled++
+	if filter != nil {
+		copy := *filter
+		r.listFilter = &copy
+	}
 	if r.listErr != nil {
 		return nil, r.listErr
 	}
 	return r.listResult, nil
 }
 
-func (r *fakeTransactionRepo) Update(domain.AppContext, domain.Transaction, ...unit_of_work.UnitOfWork) error {
+func (r *fakeTransactionRepo) Update(_ domain.AppContext, t domain.Transaction, _ ...unit_of_work.UnitOfWork) error {
+	r.updated = append(r.updated, t)
 	return nil
 }
 
-func (r *fakeTransactionRepo) Delete(domain.AppContext, domain.Transaction, ...unit_of_work.UnitOfWork) error {
+func (r *fakeTransactionRepo) Delete(_ domain.AppContext, t domain.Transaction, uow ...unit_of_work.UnitOfWork) error {
+	if len(uow) > 0 {
+		r.deleteUOW = uow[0]
+	}
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	r.deleted = append(r.deleted, t)
+	return nil
+}
+
+// fakeAttachmentRepo implements transaction_attachment.Repository in memory.
+type fakeAttachmentRepo struct {
+	byID       map[uuid.UUID]domain.TransactionAttachment
+	createErr  error
+	linkErr    error
+	listErr    error
+	created    []domain.TransactionAttachment
+	linked     []domain.TransactionAttachment
+	linkCalls  int
+	deleteUOWs []unit_of_work.UnitOfWork
+}
+
+func newFakeAttachmentRepo(attachments ...domain.TransactionAttachment) *fakeAttachmentRepo {
+	byID := make(map[uuid.UUID]domain.TransactionAttachment, len(attachments))
+	for _, a := range attachments {
+		byID[a.ID] = a
+	}
+	return &fakeAttachmentRepo{byID: byID}
+}
+
+func (r *fakeAttachmentRepo) Create(_ domain.AppContext, a domain.TransactionAttachment, _ ...unit_of_work.UnitOfWork) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	r.created = append(r.created, a)
+	r.byID[a.ID] = a
+	return nil
+}
+
+func (r *fakeAttachmentRepo) GetByID(_ domain.AppContext, id uuid.UUID, _ ...unit_of_work.UnitOfWork) (*domain.TransactionAttachment, error) {
+	a, ok := r.byID[id]
+	if !ok {
+		return nil, nil
+	}
+	return &a, nil
+}
+
+func (r *fakeAttachmentRepo) Find(_ domain.AppContext, filter transaction_attachment.Filter, _ ...unit_of_work.UnitOfWork) (*domain.TransactionAttachment, error) {
+	a, ok := r.byID[filter.ID]
+	if !ok || filter.DraftOnly && a.TransactionID != nil {
+		return nil, nil
+	}
+	if filter.TransactionID != nil && (a.TransactionID == nil || *a.TransactionID != *filter.TransactionID) {
+		return nil, nil
+	}
+	return &a, nil
+}
+
+func (r *fakeAttachmentRepo) LockByIDs(_ domain.AppContext, ids []uuid.UUID, _ ...unit_of_work.UnitOfWork) ([]domain.TransactionAttachment, error) {
+	var out []domain.TransactionAttachment
+	for _, id := range ids {
+		if a, ok := r.byID[id]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeAttachmentRepo) LinkToTransaction(_ domain.AppContext, transactionID int64, ids []uuid.UUID, _ ...unit_of_work.UnitOfWork) error {
+	r.linkCalls++
+	if r.linkErr != nil {
+		return r.linkErr
+	}
+	for _, id := range ids {
+		a, ok := r.byID[id]
+		if !ok || a.TransactionID != nil {
+			continue
+		}
+		txID := transactionID
+		a.TransactionID = &txID
+		r.byID[id] = a
+		r.linked = append(r.linked, a)
+	}
+	return nil
+}
+
+func (r *fakeAttachmentRepo) ListByTransactionIDs(_ domain.AppContext, ids []int64, _ ...unit_of_work.UnitOfWork) ([]domain.TransactionAttachment, error) {
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+	want := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	var out []domain.TransactionAttachment
+	for _, a := range r.byID {
+		if a.TransactionID == nil {
+			continue
+		}
+		if _, ok := want[*a.TransactionID]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeAttachmentRepo) Delete(_ domain.AppContext, a domain.TransactionAttachment, uow ...unit_of_work.UnitOfWork) error {
+	if len(uow) > 0 {
+		r.deleteUOWs = append(r.deleteUOWs, uow[0])
+	}
+	delete(r.byID, a.ID)
+	return nil
+}
+
+// fakeAttachmentStorage implements object_storage.Store.
+type fakeAttachmentStorage struct {
+	objects   map[string][]byte
+	putErr    error
+	openErr   error
+	deleteErr error
+	putCalls  int
+	deleted   []string
+}
+
+func newFakeAttachmentStorage() *fakeAttachmentStorage {
+	return &fakeAttachmentStorage{objects: map[string][]byte{}}
+}
+
+func (s *fakeAttachmentStorage) Put(_ domain.AppContext, ref object_storage.Ref, body io.Reader, _ string) (object_storage.Stored, error) {
+	s.putCalls++
+	if s.putErr != nil {
+		return object_storage.Stored{}, s.putErr
+	}
+	b, err := io.ReadAll(body)
+	if err != nil {
+		return object_storage.Stored{}, err
+	}
+	s.objects[ref.Key] = b
+	return object_storage.Stored{Version: "v1", ETag: "etag-v1"}, nil
+}
+
+func (s *fakeAttachmentStorage) Open(_ domain.AppContext, ref object_storage.Ref) (object_storage.Stream, error) {
+	if s.openErr != nil {
+		return object_storage.Stream{}, s.openErr
+	}
+	b, ok := s.objects[ref.Key]
+	if !ok {
+		return object_storage.Stream{}, object_storage.ErrNotFound
+	}
+	return object_storage.Stream{Body: io.NopCloser(bytes.NewReader(b)), ByteSize: int64(len(b))}, nil
+}
+
+func (s *fakeAttachmentStorage) Delete(_ domain.AppContext, ref object_storage.Ref) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	s.deleted = append(s.deleted, ref.Key)
+	delete(s.objects, ref.Key)
 	return nil
 }

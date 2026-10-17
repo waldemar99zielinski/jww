@@ -2,14 +2,15 @@
 
 **Role.** Create/read use cases for exchange-rate records. **No UoW manager** — every method takes/forwards the optional `uow`, because each op is a single repo call; callers supply the transaction.
 
-## Files — `currency_exchange_rate.go`
+## Files
 
-- `Repository`: `Create(...)`, `UpsertMany(ctx, []domain.CurrencyExchangeRateFlatten, uow...) (UpsertCounts, error)`, `GetByCurrencies(ctx, from, to domain.Currency, asOf time.Time, uow...)`, `List(ctx, uow...)`.
-- `Service{ repository }`; `NewService(repository)` (two-arg-less constructor — no manager).
+- `repository.go` — `Repository`: `Create(...)`, `UpsertMany(ctx, []domain.CurrencyExchangeRateFlatten, uow...) (UpsertCounts, error)`, `GetByCurrencies(ctx, from, to domain.Currency, asOf time.Time, uow...)`, `List(ctx, filter, uow...)`.
+- `filter.go` — `Filter{ FromCurrencyCode, ToCurrencyCode, RecordedFrom, RecordedTo }`; related currencies are represented by explicit codes, and `Validate()` rejects an inverted recorded-at range.
+- `currency_exchange_rate.go` — `RateSource`, result types, and `Service{ repository }`; `NewService(repository)` (two-arg-less constructor — no manager).
 - `Create(ctx, from, to domain.Currency, rate domain.ExchangeRate, uow ...)` — stamps `RecordedAt: time.Now().UTC()`, `Validate()`, repo `Create`. Left untouched, so the manual HTTP endpoint keeps its "now" timestamp and single-row semantics.
 - `UpsertMany(ctx, []domain.CurrencyExchangeRateFlatten, uow ...)` — normalizes every `RecordedAt` to UTC, `Validate()`s the whole batch (first invalid row aborts before I/O), then hands it to the repo as **one** statement that replaces on a `(from, to, recorded_at)` conflict. An empty batch is a no-op.
 - `GetByCurrencies(...)` — nil → `domain.NewCurrencyExchangeRateNotFoundError(from.Code, to.Code)`.
-- `List`: passthrough.
+- `List`: validates and forwards the optional filter.
 
 ## Ports
 

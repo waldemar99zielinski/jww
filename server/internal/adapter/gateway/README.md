@@ -12,8 +12,7 @@
 
 ## Rules
 
-- **Files:** `postgres_<entity>_repository.go`.
-- **Types:** `Postgres<Entity>Repository{ db DBTX }`; `NewPostgres<Entity>Repository(db DBTX) *Postgres<Entity>Repository`.
+- **Files:** `postgres_<entity>_repository.go`.- **Types:** `Postgres<Entity>Repository{ db DBTX }`; `NewPostgres<Entity>Repository(db DBTX) *Postgres<Entity>Repository`.
 - **Method signatures mirror the service port exactly**, `ctx domain.AppContext` first, trailing variadic `uow ...unit_of_work.UnitOfWork`.
 - **Every method starts** with:
   ```go
@@ -27,6 +26,8 @@
 - Factored SELECT/JOIN shapes live in package consts (`transactionSelectColumns`, `transactionFrom`, …); they begin with a newline and are used with `[1:]`.
 - List ordering is explicit; conditional filters are appended only when non-nil.
 - Reuse a `scan<Entity>Row(row pgx.Row)` helper when >1 method scans the same shape. A gateway may implement **several** service ports.
+- Nullable scalars (e.g. `transaction_attachments.transaction_id`) are handled with `pgtype.Int8` on read and a `nullableInt64` helper on write, so a nil pointer becomes SQL `NULL` rather than a typed nil arg.
+- `LockByIDs` uses `.OrderBy("a.id").Suffix("FOR UPDATE")` so concurrent claims lock rows in one order; `LinkToTransaction` is conditional (`WHERE transaction_id IS NULL`) and errors if the affected-row count does not match the request.
 
 ## How to add a repository
 

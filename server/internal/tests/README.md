@@ -11,6 +11,9 @@ server rather than one internal package.
 
 - [`pgtest/`](pgtest/README.md) — boots a disposable Postgres container,
   applies migrations, and provides per-test transaction-rollback isolation.
+- [`s3test/`](s3test/README.md) — boots a disposable MinIO container and
+  creates a private bucket, for the storage adapter's integration tests and
+  `server/tests/e2e`.
 
 ## Rules
 

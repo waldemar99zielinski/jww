@@ -6,7 +6,10 @@
 
 ## Files
 
-One per resource (`auth.go`, `user.go`, `currency.go`, `currency_exchange_rate.go`, `transaction.go`, `transaction_category.go`, `summary.go`) plus `date.go` (`type Date time.Time`, `"YYYY-MM-DD"` JSON + `ParseDate`) and `validate.go` (helpers `minLength`, `exactLength`, `nonNegative`, `firstError`).
+One per resource (`auth.go`, `user.go`, `currency.go`, `currency_exchange_rate.go`, `transaction.go`, `transaction_attachment.go`, `transaction_category.go`, `summary.go`) plus `date.go` (`type Date time.Time`, `"YYYY-MM-DD"` JSON + `ParseDate`) and `validate.go` (helpers `minLength`, `exactLength`, `nonNegative`, `firstError`, `noDuplicateUUIDs`, `noNilUUIDs`).
+
+- `transaction.go` — `TransactionCreateRequest` gains optional `attachment_ids []uuid.UUID` (validated for duplicates/empty ids); `TransactionResponse` gains `attachments []TransactionAttachmentResponse`, always non-nil, with no `attachment_count`.
+- `transaction_attachment.go` — `TransactionAttachmentResponse` (public fields only; `transaction_id` is `*int64` and null for a draft) + `TransactionAttachmentToResponse`.
 
 ## Rules
 

@@ -7,14 +7,6 @@ import (
 	"jww/internal/service/unit_of_work"
 )
 
-type Repository interface {
-	Create(ctx domain.AppContext, currency domain.Currency, uow ...unit_of_work.UnitOfWork) error
-	GetByCode(ctx domain.AppContext, code string, uow ...unit_of_work.UnitOfWork) (*domain.Currency, error)
-	List(ctx domain.AppContext, uow ...unit_of_work.UnitOfWork) ([]domain.Currency, error)
-	Update(ctx domain.AppContext, currency domain.Currency, uow ...unit_of_work.UnitOfWork) error
-	Delete(ctx domain.AppContext, currency domain.Currency, uow ...unit_of_work.UnitOfWork) error
-}
-
 type Service struct {
 	repository Repository
 	uowManager unit_of_work.Manager
@@ -54,46 +46,46 @@ func (s *Service) Update(ctx domain.AppContext, currency domain.Currency) (*doma
 	if err := currency.Validate(); err != nil {
 		return nil, err
 	}
-	active, err := s.uowManager.Create(ctx)
+	uow, err := s.uowManager.Create(ctx)
 	if err != nil {
 		return nil, err
 	}
-	existing, err := s.repository.GetByCode(ctx, currency.Code, active)
+	existing, err := s.repository.GetByCode(ctx, currency.Code, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
 	if existing == nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, domain.NewCurrencyNotFoundError(currency.Code)
 	}
-	if err := s.repository.Update(ctx, currency, active); err != nil {
-		_ = active.Restore(ctx)
+	if err := s.repository.Update(ctx, currency, uow); err != nil {
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	if err := active.Finish(ctx); err != nil {
+	if err := uow.Finish(ctx); err != nil {
 		return nil, err
 	}
 	return &currency, nil
 }
 
 func (s *Service) Delete(ctx domain.AppContext, currency domain.Currency) error {
-	active, err := s.uowManager.Create(ctx)
+	uow, err := s.uowManager.Create(ctx)
 	if err != nil {
 		return err
 	}
-	existing, err := s.repository.GetByCode(ctx, currency.Code, active)
+	existing, err := s.repository.GetByCode(ctx, currency.Code, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return err
 	}
 	if existing == nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return domain.NewCurrencyNotFoundError(currency.Code)
 	}
-	if err := s.repository.Delete(ctx, currency, active); err != nil {
-		_ = active.Restore(ctx)
+	if err := s.repository.Delete(ctx, currency, uow); err != nil {
+		_ = uow.Restore(ctx)
 		return err
 	}
-	return active.Finish(ctx)
+	return uow.Finish(ctx)
 }

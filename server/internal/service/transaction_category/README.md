@@ -2,10 +2,10 @@
 
 **Role.** CRUD use cases for transaction categories. Owns transactions for `Update`/`Delete`.
 
-## Files — `transaction_category.go`
+## Files
 
-- `Repository`: `Create`, `GetByID(ctx, uuid.UUID, uow...)`, `ListByType(ctx, type domain.TransactionCategoryType, activeOnly bool, uow...)`, `Update`, `Delete`.
-- `Service{ repository, uowManager }`; `NewService`.
+- `repository.go` — `Repository`: `Create`, `GetByID(ctx, uuid.UUID, uow...)`, `ListByType(ctx, type domain.TransactionCategoryType, activeOnly bool, uow...)`, `Update`, `Delete`.
+- `transaction_category.go` — `Service{ repository, uowManager }`; `NewService`.
 - `Create(ctx, categoryType domain.TransactionCategoryType, name string, sortOrder int, uow...)` — assigns `ID: uuid.New()`, `Active: true` (defaults belong in the **service**, not domain/handler), `Validate()`, repo create.
 - `GetByID` — nil → `domain.NewTransactionCategoryNotFoundError(id)`.
 - `ListByType(ctx, type, activeOnly, uow...)` — passthrough; `activeOnly` is a plain bool argument (no filter struct).

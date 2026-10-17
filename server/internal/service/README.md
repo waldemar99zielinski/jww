@@ -7,8 +7,9 @@
 ## Packages
 
 - [`auth/`](auth/README.md) — login + token verification.
-- [`currency/`](currency/README.md), [`currency_exchange_rate/`](currency_exchange_rate/README.md), [`transactioncategory/`](transactioncategory/README.md), [`transaction/`](transaction/README.md), [`user/`](user/README.md) — CRUD-style use cases.
+- [`currency/`](currency/README.md), [`currency_exchange_rate/`](currency_exchange_rate/README.md), [`transaction_category/`](transaction_category/README.md), [`transaction/`](transaction/README.md), [`transaction_attachment/`](transaction_attachment/README.md), [`user/`](user/README.md) — CRUD-style use cases.
 - [`unit_of_work/`](unit_of_work/README.md) — the persistence-agnostic transaction port.
+- [`object_storage/`](object_storage/README.md) — the persistence-agnostic blob-storage port (shared by any feature that stores files).
 - [`workflow/`](workflow/README.md) — orchestration across services; owns transaction demarcation.
 
 ## Imports
@@ -19,7 +20,9 @@
 
 ## Shared conventions
 
+- **Directory/package naming:** a multi-word package directory uses `snake_case` with an underscore (`currency_exchange_rate`, `transaction_category`, `transaction_attachment`), and the Go package name matches the directory exactly (so the import path and the identifier you call are spelled the same way). Never concatenate the words (`transactionattachment`).
 - **Ports live here, not in adapters.** One concrete Postgres gateway satisfies several ports implicitly (structural typing) — no `var _ Port` assertions.
+- **Repository ports live in `repository.go`; filter/query objects live in `filter.go`.** Keep service behavior and construction in the resource-named service file.
 - **Port signature:** `ctx domain.AppContext` first; `uow ...unit_of_work.UnitOfWork` **last and variadic on every method**.
 - `Service` struct + `NewService(...)`; include `uowManager unit_of_work.Manager` only when the service owns transactions (multi-step Update/Delete).
 - Build the domain struct in the service, set defaults (`uuid.New()`, `time.Now().UTC()`, `Active: true`), call `Validate()` **before** I/O, then call the repo.
@@ -29,7 +32,18 @@
 ## Delegating vs owning a transaction
 
 - **`Create` / `Get*` / `List`:** accept `uow ...` and forward it — the caller (or the service's own caller) owns the transaction.
-- **`Update` / `Delete`:** signature has **no `uow` param**; create their own via `uowManager`, `Restore` on every error, `Finish` on success, with the existence check inside the transaction.
+- **`Update` / standalone `Delete`:** normally create their own UoW via `uowManager`, `Restore` on every error, and `Finish` on success, with the existence check inside the transaction. A delete that must compose with other resource changes may accept `uow ...`; when supplied, it forwards that UoW and leaves finish/restore to the workflow owner.
+
+## Filter rules
+
+- A resource owns exactly one filter type in its own `filter.go`; workflows and transport packages reuse it and never define mirror filter structs.
+- Filter fields name the exact queried field. For related resources, flatten the key into an explicit scalar such as `UserID`, `CategoryID`, `FromCurrencyCode`, or `ToCurrencyCode`; never put a nested domain struct (`User`, `Currency`, etc.) in a filter.
+- If several fields of one related resource become queryable, expose each separately (for example `CategoryID` and `CategoryName`) rather than introducing a `Category` field.
+- Use pointers where the zero value is meaningful and must be distinguishable from “not supplied”; a blank string may represent “not supplied” when blank is not a valid value.
+- Range bounds use explicit `...From` / `...To` names and inclusive SQL predicates unless the field documents otherwise. `Validate()` rejects inverted ranges and other cross-field contradictions.
+- The owning service validates a non-nil filter before repository I/O. A validation failure must not call the repository.
+- Repository implementations apply filters in the data-store query, never by loading all rows and filtering in memory. A nil filter means no filtering.
+- Adding a filter field requires service validation/pass-through coverage and adapter integration coverage proving the generated query behavior.
 
 ## Testing requirement for this directory
 
@@ -51,7 +65,8 @@ applicable; and, for `Update`/`Delete`, `Restore`-on-every-error-path and
 
 ## Add a new service — checklist
 
-- [ ] Minimal `<X>Repository` interface in the package (don't share across services).
+- [ ] Minimal `<X>Repository` interface in `repository.go` (don't share across services).
+- [ ] Filter/query objects, when needed, in `filter.go`.
 - [ ] `ctx domain.AppContext` first, `uow ...unit_of_work.UnitOfWork` last on every method.
 - [ ] `Service` + `NewService(...)`; add `uowManager` only if it owns transactions.
 - [ ] Build entity, set defaults, `Validate()`, call repo.

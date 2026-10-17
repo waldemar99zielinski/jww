@@ -10,6 +10,7 @@ import (
 	"jww/internal/service/auth"
 	"jww/internal/service/currency"
 	"jww/internal/service/transaction"
+	"jww/internal/service/transaction_attachment"
 	"jww/internal/service/transaction_category"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
@@ -34,6 +35,7 @@ type Deps struct {
 	CurrencyExchangeRateWorkflow *workflow.CurrencyExchangeRateWorkflow
 	TransactionCategoryService   *transaction_category.Service
 	TransactionService           *transaction.Service
+	TransactionAttachmentService *transaction_attachment.Service
 	TransactionWorkflow          *workflow.TransactionWorkflow
 	SummaryWorkflow              *workflow.SummaryWorkflow
 	CorsOrigins                  []string

@@ -6,8 +6,8 @@
 
 ## Files
 
-- `currency_exchange_rate_workflow.go` — `CurrencyExchangeRateWorkflow{ currencyService, exchangeRateService, rateSource, uowManager }`. Own-UoW: resolve `from`/`to` currencies, then `exchangeRateService.Create(..., active)`, `Finish`. Also owns the daily sync: `SyncDaily(ctx)` → `Sync(ctx, yesterday)`, which lists every currency, fetches the full directed matrix from the `RateSource` port, filters to known codes, writes the batch with one `UpsertMany` (**no UoW** — one call), and returns `SyncResult{Currencies, Fetched, Inserted, Updated, Skipped, Warnings}`. It is base-agnostic (the base flag is never consulted).
-- `transaction_workflow.go` — `TransactionWorkflow{ currencyService, categoryService, userService, transactionService, uowManager }`. `Create` resolves currency/category/user then creates the transaction in one UoW. `List(ctx, TransactionListFilter)` resolves optional raw ids/codes into a `transaction.Filter`, validates, then lists.
+- `currency_exchange_rate_workflow.go` — `CurrencyExchangeRateWorkflow{ currencyService, exchangeRateService, rateSource, uowManager }`. Own-UoW: resolve `from`/`to` currencies, then `exchangeRateService.Create(..., uow)`, `Finish`. Also owns the daily sync: `SyncDaily(ctx)` → `Sync(ctx, yesterday)`, which lists every currency, fetches the full directed matrix from the `RateSource` port, filters to known codes, writes the batch with one `UpsertMany` (**no UoW** — one call), and returns `SyncResult{Currencies, Fetched, Inserted, Updated, Skipped, Warnings}`. It is base-agnostic (the base flag is never consulted).
+- `transaction_workflow.go` — `TransactionWorkflow{ currencyService, categoryService, userService, transactionService, attachmentService, uowManager }`. `Create` resolves currency/category/user, locks and links any requested `attachment_ids` drafts, and creates the transaction in one UoW. `Attach` links a draft later (idempotent for the same parent, 409 for another). `Get`/`List` hydrate attachment summaries (batch, one query); `List` is read-only and does not open a UoW. `Delete` asks the attachment service to explicitly delete each attachment's object and metadata before deleting the transaction. `UploadAttachment` is the transaction-first upload path.
 - `signup.go` — `SignupWorkflow{ userService }`; thin wrapper over `userService.Create` (single service call, no explicit UoW).
 - `summary.go` — `SummaryWorkflow{ currencyService, userService, transactionService, currencyExchangeRateService, uowManager }`. Resolves currency/user, normalizes dates, lists transactions in one UoW, converts each into the target currency, builds and validates `domain.Summary`.
 
@@ -15,9 +15,9 @@
 
 - Depend on **concrete** `*x.Service` pointers, not interfaces (only services define ports).
 - **A single service call needs no unit of work.** If an operation delegates to exactly one service call (no multi-call resolution, no multi-service composition), call it with no `uow` and don't create one — wrapping one statement in a transaction only adds a pointless round-trip. See `CurrencyExchangeRateWorkflow.Sync` (one `UpsertMany`) vs `Create` (resolve `from`, resolve `to`, then create).
-- Own the transaction for **multi-call** operations: `active, err := w.uowManager.Create(ctx)`; pass `active` into every service call that accepts an optional `uow`; `_ = active.Restore(ctx)` on every error; `active.Finish(ctx)` once at the end.
-- Only call service methods that **accept/forward `uow`** (`Create`/`GetBy*`/`List`) inside a workflow's UoW. A service's `Update`/`Delete` creates its own UoW — **never** call them inside a workflow's UoW (would nest).
-- Translate raw request identifiers (codes, ids) into resolved `domain` structs before calling services; services never resolve FKs.
+- Own the transaction for **multi-call** operations: `uow, err := w.uowManager.Create(ctx)`; pass `uow` into every service call that accepts an optional `uow`; `_ = uow.Restore(ctx)` on every error; `uow.Finish(ctx)` once at the end.
+- Only call service methods that **accept/forward `uow`** inside a workflow's UoW. Methods without a `uow` parameter own their transaction and must not be nested. When a delete supports both standalone and composed use, passing a UoW makes the workflow responsible for finish/restore.
+- Translate raw request identifiers into resolved `domain` structs for operations whose service API requires those structs (for example transaction creation). Query filters stay in the owning resource service package and use explicitly named scalar fields; workflows do not define duplicate filter types.
 - Timestamps/date normalization live here or in services, never in handlers.
 - Passthrough methods are added so every request for a resource still enters through one workflow type.
 
@@ -25,8 +25,7 @@
 
 1. Add `<resource>_workflow.go`, struct with the concrete services it needs + `uowManager` (omit only if genuinely single-service).
 2. `New...Workflow(...)`; wire it into `kernel.Deps` and `cmd/server/deps.go`.
-3. Multi-call methods: create `active`, resolve references, delegate the write to one service via `active`, `Restore` on error, `Finish` on success.
-4. For raw-id request params, define a workflow-local filter/params type (mirroring `TransactionListFilter`).
+3. Multi-call methods: create `uow`, resolve references, delegate the write to one service via `uow`, `Restore` on error, `Finish` on success.
 
 ## Avoid
 

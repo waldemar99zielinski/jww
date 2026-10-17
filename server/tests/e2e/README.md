@@ -19,24 +19,26 @@ proves the HTTP API is internally correct on its own.
 ## Two tiers
 
 1. **Journey tests (primary, in-process)** — `auth_journey_test.go`,
-   `crud_journey_test.go`, `summary_journey_test.go`. `TestMain`
-   (`e2e_main_test.go`) starts one `pgtest` container for the whole package,
-   builds real `kernel.Deps` (`utils.BuildTestDeps`, duplicating
+   `crud_journey_test.go`, `summary_journey_test.go`,
+   `attachment_journey_test.go`. `TestMain` (`e2e_main_test.go`) starts one
+   `pgtest` Postgres container **and one `s3test` MinIO container** for the
+   whole package, builds real `kernel.Deps` (`utils.BuildTestDeps`, duplicating
    `cmd/server/deps.go`'s `buildDeps` — see that package's README for why),
    wraps `http_server.NewRouter(deps)` in `httptest.NewServer`, and seeds one
    user directly through the service layer (there's no public signup HTTP
    endpoint). Everything below the HTTP layer is 100% real; a bug in
-   Squirrel SQL, JWT signing, or service orchestration shows up here exactly
-   like in production. What it doesn't exercise is `cmd/server`'s own
-   `main()`.
+   Squirrel SQL, JWT signing, S3 streaming, or service orchestration shows up
+   here exactly like in production. What it doesn't exercise is `cmd/server`'s
+   own `main()`.
 2. **Boot smoke test (secondary, out-of-process)** — `boot_smoke_test.go`'s
    `TestCmdServerBoots`. Builds the actual `cmd/server` binary, runs it as a
-   subprocess against the same `pgtest` database and an ephemeral port
-   (`utils.FreePort`), polls until it responds, sends `SIGTERM`, and asserts
-   it exits cleanly. This is the one place that proves `main.go`'s own
-   wiring — config loading, `database.Migrate` running at startup, graceful
-   shutdown — works as deployed. Kept to exactly one test; the journeys
-   above already cover business behavior.
+   subprocess against the same `pgtest` database, the same MinIO instance, and
+   an ephemeral port (`utils.FreePort`), polls until it responds, sends
+   `SIGTERM`, and asserts it exits cleanly. This is the one place that proves
+   `main.go`'s own wiring — config loading, `database.Migrate` running at
+   startup, storage-adapter construction, graceful shutdown — works as
+   deployed. Kept to exactly one test; the journeys above already cover
+   business behavior.
 
 ## Data isolation
 

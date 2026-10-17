@@ -6,7 +6,7 @@
 
 ## Subpackages
 
-`auth/`, `currency/`, `currency_exchange_rate/`, `summary/`, `transaction/`, `transaction_category/`, `user/`.
+`auth/`, `currency/`, `currency_exchange_rate/`, `summary/`, `transaction/`, `transaction_attachment/`, `transaction_category/`, `user/`.
 
 ## A router's shape
 

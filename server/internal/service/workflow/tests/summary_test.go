@@ -116,7 +116,7 @@ func TestSummaryWorkflow_Generate(t *testing.T) {
 	})
 
 	// Regression test for the bug an earlier audit found and fixed: a
-	// missing active.Restore(ctx) on the conversion error path in
+	// missing uow.Restore(ctx) on the conversion error path in
 	// statsByCurrency/convert. Any future regression here must fail this
 	// test.
 	t.Run("a missing exchange rate mid-aggregation rolls back (regression: Restore was once skipped here)", func(t *testing.T) {

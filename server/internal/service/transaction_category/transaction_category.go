@@ -9,14 +9,6 @@ import (
 	"jww/internal/service/unit_of_work"
 )
 
-type Repository interface {
-	Create(ctx domain.AppContext, category domain.TransactionCategory, uow ...unit_of_work.UnitOfWork) error
-	GetByID(ctx domain.AppContext, categoryID uuid.UUID, uow ...unit_of_work.UnitOfWork) (*domain.TransactionCategory, error)
-	ListByType(ctx domain.AppContext, categoryType domain.TransactionCategoryType, activeOnly bool, uow ...unit_of_work.UnitOfWork) ([]domain.TransactionCategory, error)
-	Update(ctx domain.AppContext, category domain.TransactionCategory, uow ...unit_of_work.UnitOfWork) error
-	Delete(ctx domain.AppContext, category domain.TransactionCategory, uow ...unit_of_work.UnitOfWork) error
-}
-
 type Service struct {
 	repository Repository
 	uowManager unit_of_work.Manager
@@ -62,46 +54,46 @@ func (s *Service) Update(ctx domain.AppContext, category domain.TransactionCateg
 	if err := category.Validate(); err != nil {
 		return nil, err
 	}
-	active, err := s.uowManager.Create(ctx)
+	uow, err := s.uowManager.Create(ctx)
 	if err != nil {
 		return nil, err
 	}
-	existing, err := s.repository.GetByID(ctx, category.ID, active)
+	existing, err := s.repository.GetByID(ctx, category.ID, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
 	if existing == nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, domain.NewTransactionCategoryNotFoundError(category.ID)
 	}
-	if err := s.repository.Update(ctx, category, active); err != nil {
-		_ = active.Restore(ctx)
+	if err := s.repository.Update(ctx, category, uow); err != nil {
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	if err := active.Finish(ctx); err != nil {
+	if err := uow.Finish(ctx); err != nil {
 		return nil, err
 	}
 	return &category, nil
 }
 
 func (s *Service) Delete(ctx domain.AppContext, category domain.TransactionCategory) error {
-	active, err := s.uowManager.Create(ctx)
+	uow, err := s.uowManager.Create(ctx)
 	if err != nil {
 		return err
 	}
-	existing, err := s.repository.GetByID(ctx, category.ID, active)
+	existing, err := s.repository.GetByID(ctx, category.ID, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return err
 	}
 	if existing == nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return domain.NewTransactionCategoryNotFoundError(category.ID)
 	}
-	if err := s.repository.Delete(ctx, category, active); err != nil {
-		_ = active.Restore(ctx)
+	if err := s.repository.Delete(ctx, category, uow); err != nil {
+		_ = uow.Restore(ctx)
 		return err
 	}
-	return active.Finish(ctx)
+	return uow.Finish(ctx)
 }

@@ -13,11 +13,12 @@ import (
 // Machine-readable error codes carried in the "error.code" field. They are the
 // stable part of the error contract; "error.message" is for humans.
 const (
-	CodeBadRequest   = "bad_request"
-	CodeUnauthorized = "unauthorized"
-	CodeNotFound     = "not_found"
-	CodeConflict     = "conflict"
-	CodeInternal     = "internal_error"
+	CodeBadRequest         = "bad_request"
+	CodeUnauthorized       = "unauthorized"
+	CodeNotFound           = "not_found"
+	CodeConflict           = "conflict"
+	CodeInternal           = "internal_error"
+	CodeServiceUnavailable = "service_unavailable"
 )
 
 // DecodeJSON decodes r's body into a T, rejecting unknown fields and
@@ -140,6 +141,8 @@ func errorStatus(kind domain.ErrorKind) (int, string) {
 		return http.StatusConflict, CodeConflict
 	case domain.ErrorKindInternal:
 		return http.StatusInternalServerError, CodeInternal
+	case domain.ErrorKindUnavailable:
+		return http.StatusServiceUnavailable, CodeServiceUnavailable
 	default:
 		return http.StatusNotFound, CodeNotFound
 	}

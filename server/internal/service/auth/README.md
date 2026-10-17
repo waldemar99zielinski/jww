@@ -2,12 +2,10 @@
 
 **Role.** Authentication use cases: password login and bearer-token verification. Not CRUD. Owns **no** unit of work (only single-row lookups).
 
-## Files — `auth.go`
+## Files
 
-- `UserRepository` (smallest possible port): `GetByID`, `GetByUsername` (all `ctx`, `uow...`).
-- `PasswordHasher`: `Hash(password) (string, error)`, `Verify(password, hash) bool`.
-- `TokenService`: `Issue(userID uuid.UUID) (string, error)`, `Verify(token) (*uuid.UUID, error)`.
-- `Service{ repository, passwordHasher, tokenService }`; `NewService(...)`.
+- `repository.go` — `UserRepository` (smallest possible port): `GetByID`, `GetByUsername` (all `ctx`, `uow...`).
+- `auth.go` — `PasswordHasher`, `TokenService`, and `Service{ repository, passwordHasher, tokenService }`; `NewService(...)`.
 - `Login(ctx, username, password) (string, error)` — lookup; `user == nil || !Verify(...)` → `domain.NewAuthenticationError()`; else `tokenService.Issue(user.ID)`.
 - `Authenticate(ctx, token) (*domain.User, error)` — `Verify`; any error/nil → generic `AuthenticationError`; then `GetByID`; nil → `AuthenticationError`.
 

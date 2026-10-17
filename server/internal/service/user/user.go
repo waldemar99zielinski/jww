@@ -14,14 +14,6 @@ import (
 	"jww/internal/service/unit_of_work"
 )
 
-type Repository interface {
-	Create(ctx domain.AppContext, user domain.User, uow ...unit_of_work.UnitOfWork) error
-	GetByID(ctx domain.AppContext, userID uuid.UUID, uow ...unit_of_work.UnitOfWork) (*domain.User, error)
-	List(ctx domain.AppContext, uow ...unit_of_work.UnitOfWork) ([]domain.User, error)
-	Update(ctx domain.AppContext, user domain.User, uow ...unit_of_work.UnitOfWork) error
-	Delete(ctx domain.AppContext, user domain.User, uow ...unit_of_work.UnitOfWork) error
-}
-
 type PasswordHasher interface {
 	Hash(password string) (string, error)
 	Verify(password, passwordHash string) bool
@@ -77,46 +69,46 @@ func (s *Service) Update(ctx domain.AppContext, user domain.User) (*domain.User,
 	if err := user.Validate(); err != nil {
 		return nil, err
 	}
-	active, err := s.uowManager.Create(ctx)
+	uow, err := s.uowManager.Create(ctx)
 	if err != nil {
 		return nil, err
 	}
-	existing, err := s.repository.GetByID(ctx, user.ID, active)
+	existing, err := s.repository.GetByID(ctx, user.ID, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
 	if existing == nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, domain.NewUserNotFoundError(user.ID)
 	}
-	if err := s.repository.Update(ctx, user, active); err != nil {
-		_ = active.Restore(ctx)
+	if err := s.repository.Update(ctx, user, uow); err != nil {
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	if err := active.Finish(ctx); err != nil {
+	if err := uow.Finish(ctx); err != nil {
 		return nil, err
 	}
 	return &user, nil
 }
 
 func (s *Service) Delete(ctx domain.AppContext, user domain.User) error {
-	active, err := s.uowManager.Create(ctx)
+	uow, err := s.uowManager.Create(ctx)
 	if err != nil {
 		return err
 	}
-	existing, err := s.repository.GetByID(ctx, user.ID, active)
+	existing, err := s.repository.GetByID(ctx, user.ID, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return err
 	}
 	if existing == nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return domain.NewUserNotFoundError(user.ID)
 	}
-	if err := s.repository.Delete(ctx, user, active); err != nil {
-		_ = active.Restore(ctx)
+	if err := s.repository.Delete(ctx, user, uow); err != nil {
+		_ = uow.Restore(ctx)
 		return err
 	}
-	return active.Finish(ctx)
+	return uow.Finish(ctx)
 }

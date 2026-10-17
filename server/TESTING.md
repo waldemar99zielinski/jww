@@ -47,6 +47,7 @@ looks like this, not a pending proposal.
 | `internal/adapter/security` | No | Unit | black-box |
 | `internal/adapter/schema` | No | Unit | black-box |
 | `internal/adapter/gateway` | **Yes — real Postgres** | Integration | black-box |
+| `internal/adapter/storage` | **Yes — real MinIO** | Integration | black-box |
 | `internal/infrastructure/http_server/kernel` | No (mostly) | Unit | white-box (already the case) |
 | `internal/infrastructure/http_server/routers/<resource>` | No — fake repos under real services | Unit-ish (httptest) | black-box |
 | `internal/infrastructure/database` (migrate, UoW) | Yes | Integration | — (exercised by gateway tests) |

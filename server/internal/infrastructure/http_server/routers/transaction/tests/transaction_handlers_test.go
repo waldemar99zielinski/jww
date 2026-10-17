@@ -19,6 +19,7 @@ import (
 	transactionrouter "jww/internal/infrastructure/http_server/routers/transaction"
 	"jww/internal/service/currency"
 	"jww/internal/service/transaction"
+	"jww/internal/service/transaction_attachment"
 	"jww/internal/service/transaction_category"
 	"jww/internal/service/unit_of_work"
 	"jww/internal/service/user"
@@ -137,7 +138,7 @@ func (f *fakeTransactionRepo) GetByID(_ domain.AppContext, id int64, _ ...unit_o
 func (f *fakeTransactionRepo) List(_ domain.AppContext, filter *transaction.Filter, _ ...unit_of_work.UnitOfWork) ([]domain.Transaction, error) {
 	var out []domain.Transaction
 	for _, t := range f.byID {
-		if filter != nil && filter.User != nil && t.User.ID != filter.User.ID {
+		if filter != nil && filter.UserID != nil && t.User.ID != *filter.UserID {
 			continue
 		}
 		out = append(out, t)
@@ -168,10 +169,12 @@ func (fakeUoW) Restore(domain.AppContext) error { return nil }
 func (fakeUoW) GetValue() interface{}           { return nil }
 
 type testFixtures struct {
-	currency        domain.Currency
-	category        domain.TransactionCategory
-	user            domain.User
-	transactionRepo *fakeTransactionRepo
+	currency          domain.Currency
+	category          domain.TransactionCategory
+	user              domain.User
+	transactionRepo   *fakeTransactionRepo
+	attachmentRepo    *fakeAttachmentRepo
+	attachmentStorage *fakeAttachmentStorage
 }
 
 func newTestRouter(t *testing.T) (*chi.Mux, *testFixtures) {
@@ -184,19 +187,30 @@ func newTestRouter(t *testing.T) (*chi.Mux, *testFixtures) {
 	categoryRepo := &fakeCategoryRepo{byID: map[uuid.UUID]domain.TransactionCategory{cat.ID: cat}}
 	userRepo := &fakeUserRepo{byID: map[uuid.UUID]domain.User{usr.ID: usr}}
 	transactionRepo := &fakeTransactionRepo{byID: map[int64]domain.Transaction{}}
+	attachmentRepo := newFakeAttachmentRepo()
+	attachmentStorage := newFakeAttachmentStorage()
 
 	currencyService := currency.NewService(currencyRepo, fakeUoWManager{})
 	categoryService := transaction_category.NewService(categoryRepo, fakeUoWManager{})
 	userService := user.NewService(userRepo, fakePasswordHasher{}, fakeUoWManager{})
 	transactionService := transaction.NewService(transactionRepo, fakeUoWManager{})
+	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStorage, nil)
 
 	deps := &kernel.Deps{
-		TransactionService:  transactionService,
-		TransactionWorkflow: workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, fakeUoWManager{}),
+		TransactionService:           transactionService,
+		TransactionAttachmentService: attachmentService,
+		TransactionWorkflow:          workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, attachmentService, fakeUoWManager{}),
 	}
 	r := chi.NewRouter()
 	transactionrouter.Mount(r, r, deps)
-	return r, &testFixtures{currency: curr, category: cat, user: usr, transactionRepo: transactionRepo}
+	return r, &testFixtures{
+		currency:          curr,
+		category:          cat,
+		user:              usr,
+		transactionRepo:   transactionRepo,
+		attachmentRepo:    attachmentRepo,
+		attachmentStorage: attachmentStorage,
+	}
 }
 
 func decodeData(t *testing.T, rec *httptest.ResponseRecorder, v any) {
@@ -272,6 +286,23 @@ func TestGetTransactionHandler(t *testing.T) {
 }
 
 func TestListTransactionsHandler(t *testing.T) {
+	t.Run("no filters returns all transactions", func(t *testing.T) {
+		r, fx := newTestRouter(t)
+		_, err := fx.transactionRepo.Create(domain.AppContext{}, domain.TransactionTypeExpense, domain.Money(500), fx.currency, fx.category, fx.user, domain.TransactionSourceManual, time.Now().Add(-time.Hour), "Coffee", "")
+		require.NoError(t, err)
+		_, err = fx.transactionRepo.Create(domain.AppContext{}, domain.TransactionTypeExpense, domain.Money(800), fx.currency, fx.category, fx.user, domain.TransactionSourceManual, time.Now(), "Lunch", "")
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/transactions", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var resp []schema.TransactionResponse
+		decodeData(t, rec, &resp)
+		assert.Len(t, resp, 2)
+	})
+
 	t.Run("happy path with user_id filter", func(t *testing.T) {
 		r, fx := newTestRouter(t)
 		_, err := fx.transactionRepo.Create(domain.AppContext{}, domain.TransactionTypeExpense, domain.Money(500), fx.currency, fx.category, fx.user, domain.TransactionSourceManual, time.Now(), "Coffee", "")

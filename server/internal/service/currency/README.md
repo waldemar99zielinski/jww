@@ -2,10 +2,10 @@
 
 **Role.** CRUD use cases for the `Currency` entity. Owns transactions for multi-step `Update`/`Delete`.
 
-## Files — `currency.go`
+## Files
 
-- `Repository`: `Create`, `GetByCode`, `List`, `Update`, `Delete` (all `ctx`, `uow...`).
-- `Service{ repository, uowManager }`; `NewService(repo, uowManager)`.
+- `repository.go` — `Repository`: `Create`, `GetByCode`, `List`, `Update`, `Delete` (all `ctx`, `uow...`).
+- `currency.go` — `Service{ repository, uowManager }`; `NewService(repo, uowManager)`.
 - `Create(ctx, code, name string, isBase bool, uow ...)` — build `domain.Currency`, `Validate()`, repo `Create`, return `&currency`.
 - `GetByCode(ctx, code, uow ...)` — nil → `domain.NewCurrencyNotFoundError(code)`.
 - `List(ctx, uow ...)` — passthrough.

@@ -23,7 +23,7 @@ type UnitOfWork interface {
 
 - Imports: `internal/domain` only.
 - The gateway enforces "at most one uow" and type-asserts `GetValue().(DBTX)`.
-- Transaction-demarcation owner pattern: `active, err := mgr.Create(ctx)`; pass `active` into every repo/service call; `_ = active.Restore(ctx)` on any error; `active.Finish(ctx)` once on success.
+- Transaction-demarcation owner pattern: `uow, err := mgr.Create(ctx)`; pass `uow` into every repo/service call; `_ = uow.Restore(ctx)` on any error; `uow.Finish(ctx)` once on success.
 
 ## Avoid
 

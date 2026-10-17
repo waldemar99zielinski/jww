@@ -18,6 +18,10 @@ type TransactionCreateRequest struct {
 	Source       domain.TransactionSource `json:"source"`
 	Name         string                   `json:"name"`
 	Description  string                   `json:"description"`
+	// AttachmentIDs optionally links already-uploaded unattached drafts to
+	// the new transaction, atomically with its creation. Absent/empty keeps
+	// the request valid and creates a transaction with no attachments.
+	AttachmentIDs []uuid.UUID `json:"attachment_ids"`
 }
 
 func (r TransactionCreateRequest) Validate() error {
@@ -30,9 +34,15 @@ func (r TransactionCreateRequest) Validate() error {
 	if !r.Source.Valid() {
 		return fmt.Errorf("source must be 'manual' or 'recurring'")
 	}
-	return firstError(
+	if err := firstError(
 		exactLength("currency_code", r.CurrencyCode, 3),
 		minLength("name", r.Name, 1),
+	); err != nil {
+		return err
+	}
+	return firstError(
+		noNilUUIDs("attachment_ids", r.AttachmentIDs),
+		noDuplicateUUIDs("attachment_ids", r.AttachmentIDs),
 	)
 }
 
@@ -48,6 +58,9 @@ type TransactionResponse struct {
 	Name         string                   `json:"name"`
 	CreatedAt    time.Time                `json:"created_at"`
 	Description  string                   `json:"description"`
+	// Attachments is always present and non-null; an attachment-count field
+	// is deliberately not added.
+	Attachments []TransactionAttachmentResponse `json:"attachments"`
 }
 
 func TransactionToResponse(t domain.Transaction) TransactionResponse {
@@ -63,5 +76,6 @@ func TransactionToResponse(t domain.Transaction) TransactionResponse {
 		Name:         t.Name,
 		CreatedAt:    t.CreatedAt,
 		Description:  t.Description,
+		Attachments:  TransactionAttachmentsToResponse(t.Attachments),
 	}
 }

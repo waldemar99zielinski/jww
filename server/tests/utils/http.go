@@ -10,8 +10,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -104,4 +107,56 @@ func (c *Client) Login(t testing.TB, username, password string) string {
 	require.Equal(t, http.StatusOK, status, "login should succeed")
 	require.NotEmpty(t, resp.Data.AccessToken)
 	return resp.Data.AccessToken
+}
+
+// UploadFile POSTs one streaming multipart file part named "file" and returns
+// the raw response so callers can assert status and decode the envelope.
+func (c *Client) UploadFile(t testing.TB, path, token, filename, contentType string, content []byte) (*http.Response, []byte) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, filename))
+	if contentType != "" {
+		header.Set("Content-Type", contentType)
+	}
+	part, err := writer.CreatePart(header)
+	require.NoError(t, err)
+	_, err = part.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, c.BaseURL+path, &buf)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp, raw
+}
+
+// Download performs a GET and returns the status, raw body, and headers — the
+// one endpoint whose success body is bytes, not the JSON envelope.
+func (c *Client) Download(t testing.TB, path, token string) (int, []byte, http.Header) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, c.BaseURL+path, nil)
+	require.NoError(t, err)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, raw, resp.Header
 }

@@ -10,6 +10,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"jww/internal/domain"
+	"jww/internal/infrastructure/http_server/utils"
 )
 
 // RequestLogger logs every request through the shared logger, binding the
@@ -78,16 +79,42 @@ const defaultMaxBodyBytes = 1 << 20 // 1 MiB
 // exhaust memory or hold a connection open indefinitely. A body that exceeds
 // the limit fails with "http: request body too large" on the next Read,
 // which DecodeJSON surfaces as a decode error → 400 via WriteBadRequest.
+//
+// The two attachment-upload routes are exempt, because a file upload is
+// explicitly not size-limited; multipart is never exempted globally.
 func LimitRequestBody(maxBytes int64) func(http.Handler) http.Handler {
 	if maxBytes <= 0 {
 		maxBytes = defaultMaxBodyBytes
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isAttachmentUploadRoute(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// isAttachmentUploadRoute reports whether r is one of the two multipart upload
+// endpoints: POST /api/v1/transaction-attachments (draft) and
+// POST /api/v1/transactions/{transactionID}/attachments (transaction-first).
+func isAttachmentUploadRoute(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	patterns := [...]string{
+		"/api/v1/transaction-attachments",
+		"/api/v1/transactions/{transactionID}/attachments",
+	}
+	for _, pattern := range patterns {
+		if utils.MatchPath(pattern, r.URL.Path).Matched {
+			return true
+		}
+	}
+	return false
 }
 
 func levelForStatus(status int) slog.Level {

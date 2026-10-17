@@ -8,7 +8,7 @@
 |---|---|---|
 | POST | `/v1/currency-exchange-rates` | `createExchangeRateHandler` |
 | GET | `/v1/currency-exchange-rates` | `getExchangeRateHandler` (query: `from_currency_code`, `to_currency_code`, `as_of`) |
-| GET | `/v1/currency-exchange-rates/all` | `listExchangeRatesHandler` |
+| GET | `/v1/currency-exchange-rates/all` | `listExchangeRatesHandler` (optional query: `from_currency_code`, `to_currency_code`, `recorded_from`, `recorded_to`) |
 
 `Mount(_, protected, deps)`.
 
@@ -16,6 +16,7 @@
 
 - Create decodes `schema.CurrencyExchangeRateCreateRequest` then calls `Workflow.Create`.
 - Get parses `as_of` via `schema.ParseDate`.
+- List builds the shared `currency_exchange_rate.Filter`; recorded range bounds use RFC3339 timestamps.
 - **Routing hazard:** `/v1/currency-exchange-rates` and `/v1/currency-exchange-rates/all` are distinct chi patterns; don't later add a `{param}` route that would shadow `/all`.
 
 ## Testing requirement for this directory

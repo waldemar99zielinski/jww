@@ -100,14 +100,38 @@ func TestPostgresCurrencyExchangeRateRepository_List(t *testing.T) {
 	appCtx := pgtest.AppContext(ctx)
 	uow := pgtest.BeginRollback(t, pool, appCtx)
 	from, to := seedCurrencyPair(t, appCtx, uow, "ZRG", "ZRH")
+	otherFrom, otherTo := seedCurrencyPair(t, appCtx, uow, "ZRI", "ZRJ")
 	repo := gateway.NewPostgresCurrencyExchangeRateRepository(pool)
 
-	require.NoError(t, repo.Create(appCtx, domain.CurrencyExchangeRate{FromCurrency: from, ToCurrency: to, Rate: 10000, RecordedAt: time.Now().UTC().Truncate(time.Microsecond)}, uow))
+	older := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
+	newer := time.Now().UTC().Truncate(time.Microsecond)
+	require.NoError(t, repo.Create(appCtx, domain.CurrencyExchangeRate{FromCurrency: from, ToCurrency: to, Rate: 10000, RecordedAt: older}, uow))
+	require.NoError(t, repo.Create(appCtx, domain.CurrencyExchangeRate{FromCurrency: otherFrom, ToCurrency: otherTo, Rate: 20000, RecordedAt: newer}, uow))
 
-	list, err := repo.List(appCtx, uow)
-	require.NoError(t, err)
-	require.Len(t, list, 1)
-	assert.Equal(t, from.Code, list[0].FromCurrency.Code)
+	t.Run("no filter", func(t *testing.T) {
+		list, err := repo.List(appCtx, nil, uow)
+		require.NoError(t, err)
+		require.Len(t, list, 2)
+	})
+
+	t.Run("currency codes", func(t *testing.T) {
+		list, err := repo.List(appCtx, &currency_exchange_rate.Filter{
+			FromCurrencyCode: from.Code,
+			ToCurrencyCode:   to.Code,
+		}, uow)
+		require.NoError(t, err)
+		require.Len(t, list, 1)
+		assert.Equal(t, from.Code, list[0].FromCurrency.Code)
+		assert.Equal(t, to.Code, list[0].ToCurrency.Code)
+	})
+
+	t.Run("recorded range", func(t *testing.T) {
+		fromTime := newer.Add(-time.Minute)
+		list, err := repo.List(appCtx, &currency_exchange_rate.Filter{RecordedFrom: &fromTime}, uow)
+		require.NoError(t, err)
+		require.Len(t, list, 1)
+		assert.Equal(t, otherFrom.Code, list[0].FromCurrency.Code)
+	})
 }
 
 func TestPostgresCurrencyExchangeRateRepository_ConstraintViolations(t *testing.T) {
@@ -156,7 +180,7 @@ func TestPostgresCurrencyExchangeRateRepository_UpsertMany_FreshBatchInserts(t *
 	require.NoError(t, err)
 	assert.Equal(t, currency_exchange_rate.UpsertCounts{Inserted: 2}, counts)
 
-	list, err := repo.List(appCtx, uow)
+	list, err := repo.List(appCtx, nil, uow)
 	require.NoError(t, err)
 	require.Len(t, list, 2)
 }
@@ -182,7 +206,7 @@ func TestPostgresCurrencyExchangeRateRepository_UpsertMany_ReRunReplacesInPlace(
 	require.NoError(t, err)
 	assert.Equal(t, currency_exchange_rate.UpsertCounts{Updated: 1}, counts, "a re-run replaces, never duplicates")
 
-	list, err := repo.List(appCtx, uow)
+	list, err := repo.List(appCtx, nil, uow)
 	require.NoError(t, err)
 	require.Len(t, list, 1, "still exactly one row per pair per business day")
 	assert.Equal(t, domain.ExchangeRate(20000), list[0].Rate)

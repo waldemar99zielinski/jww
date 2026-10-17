@@ -36,7 +36,9 @@ type fakeRepo struct {
 	deleteErr    error
 	listResult   []domain.Transaction
 	listErr      error
+	listCalls    int
 	lastListFilt *transaction.Filter
+	deleteUOW    unit_of_work.UnitOfWork
 }
 
 func newFakeRepo(transactions ...domain.Transaction) *fakeRepo {
@@ -85,6 +87,7 @@ func (r *fakeRepo) GetByID(_ domain.AppContext, id int64, _ ...unit_of_work.Unit
 }
 
 func (r *fakeRepo) List(_ domain.AppContext, filter *transaction.Filter, _ ...unit_of_work.UnitOfWork) ([]domain.Transaction, error) {
+	r.listCalls++
 	r.lastListFilt = filter
 	if r.listErr != nil {
 		return nil, r.listErr
@@ -100,7 +103,10 @@ func (r *fakeRepo) Update(_ domain.AppContext, tr domain.Transaction, _ ...unit_
 	return nil
 }
 
-func (r *fakeRepo) Delete(_ domain.AppContext, tr domain.Transaction, _ ...unit_of_work.UnitOfWork) error {
+func (r *fakeRepo) Delete(_ domain.AppContext, tr domain.Transaction, uow ...unit_of_work.UnitOfWork) error {
+	if len(uow) > 0 {
+		r.deleteUOW = uow[0]
+	}
 	if r.deleteErr != nil {
 		return r.deleteErr
 	}
@@ -168,11 +174,23 @@ func TestService_List_PassesFilterThrough(t *testing.T) {
 	repo.listResult = want
 	svc := transaction.NewService(repo, &fakeUoWManager{})
 
-	filter := &transaction.Filter{Currency: &testCurrency}
+	filter := &transaction.Filter{CurrencyCode: testCurrency.Code}
 	got, err := svc.List(newAppContext(), filter)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
 	assert.Same(t, filter, repo.lastListFilt)
+}
+
+func TestService_List_InvalidFilterNeverCallsRepository(t *testing.T) {
+	repo := newFakeRepo()
+	svc := transaction.NewService(repo, &fakeUoWManager{})
+	from := time.Now().UTC()
+	to := from.Add(-time.Hour)
+
+	_, err := svc.List(newAppContext(), &transaction.Filter{CreatedFrom: &from, CreatedTo: &to})
+
+	require.Error(t, err)
+	assert.Zero(t, repo.listCalls)
 }
 
 func TestService_Update_HappyPathFinishesTransaction(t *testing.T) {
@@ -246,4 +264,18 @@ func TestService_Delete_NotFoundRestoresTransaction(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, manager.last().restored)
 	assert.False(t, manager.last().finished)
+}
+
+func TestService_Delete_UsesCallerOwnedTransaction(t *testing.T) {
+	existing := domain.Transaction{ID: 1, Type: domain.TransactionTypeExpense, Amount: 500, Category: testCategory, Name: "Doomed"}
+	repo := newFakeRepo(existing)
+	manager := &fakeUoWManager{}
+	svc := transaction.NewService(repo, manager)
+	external := &fakeUoW{}
+
+	require.NoError(t, svc.Delete(newAppContext(), existing, external))
+	assert.Same(t, external, repo.deleteUOW)
+	assert.Empty(t, manager.created, "the service must not create a nested unit of work")
+	assert.False(t, external.finished, "the caller owns commit")
+	assert.False(t, external.restored, "the caller owns rollback")
 }

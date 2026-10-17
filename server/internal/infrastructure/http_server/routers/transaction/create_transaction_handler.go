@@ -21,7 +21,7 @@ func createTransactionHandler(deps *kernel.Deps) http.HandlerFunc {
 			return
 		}
 
-		t, err := deps.TransactionWorkflow.Create(appCtx, req.Type, req.Amount, req.CurrencyCode, req.CategoryID, req.UserID, req.Source, req.Name, req.Description)
+		t, err := deps.TransactionWorkflow.Create(appCtx, req.Type, req.Amount, req.CurrencyCode, req.CategoryID, req.UserID, req.Source, req.Name, req.Description, req.AttachmentIDs)
 		if err != nil {
 			kernel.WriteError(w, err)
 			return

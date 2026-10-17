@@ -1,11 +1,13 @@
 package schema_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"jww/internal/adapter/schema"
 	"jww/internal/domain"
@@ -37,6 +39,16 @@ func TestTransactionCreateRequest_Validate(t *testing.T) {
 		{"invalid source", func(r *schema.TransactionCreateRequest) { r.Source = "bogus" }, true},
 		{"currency code wrong length", func(r *schema.TransactionCreateRequest) { r.CurrencyCode = "US" }, true},
 		{"blank name", func(r *schema.TransactionCreateRequest) { r.Name = "" }, true},
+		{"duplicate attachment ids", func(r *schema.TransactionCreateRequest) {
+			id := uuid.New()
+			r.AttachmentIDs = []uuid.UUID{id, id}
+		}, true},
+		{"empty attachment id", func(r *schema.TransactionCreateRequest) {
+			r.AttachmentIDs = []uuid.UUID{uuid.Nil}
+		}, true},
+		{"optional attachment ids accepted", func(r *schema.TransactionCreateRequest) {
+			r.AttachmentIDs = []uuid.UUID{uuid.New()}
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,4 +95,41 @@ func TestTransactionToResponse(t *testing.T) {
 	assert.Equal(t, "Weekly shop", resp.Name)
 	assert.Equal(t, "at the market", resp.Description)
 	assert.True(t, createdAt.Equal(resp.CreatedAt))
+	assert.NotNil(t, resp.Attachments, "attachments must never be null in JSON")
+	assert.Empty(t, resp.Attachments)
+}
+
+func TestTransactionToResponse_IncludesAttachments(t *testing.T) {
+	txID := int64(9)
+	tx := domain.Transaction{
+		ID: 1,
+		Attachments: []domain.TransactionAttachment{
+			{ID: uuid.New(), TransactionID: &txID, OriginalFilename: "a.pdf", MediaType: "application/pdf", ByteSize: 3},
+		},
+	}
+
+	resp := schema.TransactionToResponse(tx)
+
+	require.Len(t, resp.Attachments, 1)
+	assert.Equal(t, "a.pdf", resp.Attachments[0].OriginalFilename)
+	require.NotNil(t, resp.Attachments[0].TransactionID)
+	assert.Equal(t, txID, *resp.Attachments[0].TransactionID)
+}
+
+// TestTransactionAttachmentsToResponse_DoesNotLeakStorageFields proves the
+// public DTO never exposes storage_key/storage_version/etag.
+func TestTransactionAttachmentsToResponse_DoesNotLeakStorageFields(t *testing.T) {
+	raw, err := json.Marshal(schema.TransactionAttachmentToResponse(domain.TransactionAttachment{
+		ID:             uuid.New(),
+		StorageKey:     "jww/transaction-attachments/secret-key",
+		StorageVersion: "v42",
+		ETag:           "etag-secret",
+		MediaType:      "application/pdf",
+		ByteSize:       1,
+	}))
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "secret")
+	assert.NotContains(t, string(raw), "storage_key")
+	assert.NotContains(t, string(raw), "storage_version")
+	assert.NotContains(t, string(raw), "etag")
 }

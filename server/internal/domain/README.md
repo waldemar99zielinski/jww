@@ -12,10 +12,10 @@
 ## Key files
 
 - `app_context.go` — `AppContext{ctx,user,requestSource,flowID}` (unexported fields; value-receiver getters, pointer-receiver setters). Carried **by value** everywhere. Built at the HTTP edge by `kernel.RequestContext`.
-- `errors.go` — `DomainError` marker interface (unexported `isDomainError()` ⇒ only this package can implement it) exposing `Kind() ErrorKind` (`NotFound`/`Conflict`/`Validation`/`Unauthorized`/`Internal`) so the HTTP kernel can map an error to a status without the domain knowing HTTP. Concrete `...NotFoundError` types + `New...NotFoundError(...)`, plus `AuthenticationError` (one message for bad login *and* bad token — anti-enumeration).
+- `errors.go` — `DomainError` marker interface (unexported `isDomainError()` ⇒ only this package can implement it) exposing `Kind() ErrorKind` (`NotFound`/`Conflict`/`Validation`/`Unauthorized`/`Internal`/`Unavailable`) so the HTTP kernel can map an error to a status without the domain knowing HTTP. Concrete `...NotFoundError` types + `New...NotFoundError(...)`, plus `AuthenticationError` (one message for bad login *and* bad token — anti-enumeration), `AttachmentAlreadyLinkedError` (conflict), `ValidationError` (a cross-item rule the entity can't express), `ObjectStorageUnavailableError` (`Unavailable` → 503, generic message, cause via `Unwrap`), and `AttachmentIntegrityError` (a metadata row whose bytes are gone → 500).
 - `money.go` — `type Money int64` (cents), `type ExchangeRate int64` (1e-4). `ExchangeRate.Convert(Money) Money` multiplies in 128 bits (`math/bits`), rounds half away from zero, panics on int64 overflow. JSON is a bare number; `ParseMoney`/`ParseExchangeRate`.
 - `enums.go` — `TransactionCategoryType`, `TransactionType`, `TransactionSource`, `SummaryPeriod`; each a `string` with `Valid() bool`.
-- Entities: `user.go`, `currency.go`, `currency_exchange_rate.go`, `currency_stats.go`, `transaction.go`, `transaction_category.go`, `summary.go` — each a plain struct with `Validate() error`.
+- Entities: `user.go`, `currency.go`, `currency_exchange_rate.go`, `currency_stats.go`, `transaction.go`, `transaction_attachment.go`, `transaction_category.go`, `summary.go` — each a plain struct with `Validate() error`. `TransactionAttachment.TransactionID` is a `*int64` that is nil while the attachment is an unattached draft; the pointer is the whole state machine.
 
 ## Rules
 

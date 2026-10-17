@@ -54,7 +54,10 @@ func run() error {
 		return err
 	}
 
-	deps := buildDeps(pool, cfg.Auth, cfg.Frankfurter, cfg.Http.CorsOriginsList(), cfg.Http.MaxBodyBytes)
+	deps, err := buildDeps(ctx, pool, cfg.Auth, cfg.Frankfurter, cfg.Storage, cfg.Http.CorsOriginsList(), cfg.Http.MaxBodyBytes)
+	if err != nil {
+		return err
+	}
 
 	stopScheduler, err := startScheduler(cfg.Scheduler, deps.CurrencyExchangeRateWorkflow)
 	if err != nil {
@@ -79,8 +82,7 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// Stop scheduled jobs first so an in-flight run finishes within the same
-	// budget the HTTP shutdown gets.
+
 	stopScheduler(shutdownCtx)
 	return srv.Shutdown(shutdownCtx)
 }

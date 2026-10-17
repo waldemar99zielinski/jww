@@ -15,6 +15,7 @@ Backend for Joint Wallet Watch, a personal finance Telegram bot + Mini App, writ
 - **Exchange rates:** [Frankfurter](https://frankfurter.dev) (no API key; the `RateSource` adapter lives in `internal/adapter/frankfurter`)
 - **UUIDs:** `google/uuid`
 - **Money/rates:** `domain.Money` / `domain.ExchangeRate`, plain `int64` fixed-point types
+- **Attachment storage:** private S3-compatible object storage via `aws-sdk-go-v2` (`feature/s3/transfermanager`); metadata in Postgres, bytes in the bucket
 
 ## Architecture — dependency direction (one way only)
 
@@ -25,7 +26,7 @@ cmd/server                              composition root — imports everything,
      └─ routers/<resource>              Mount(public, protected, deps) + one handler per file
 └─ internal/infrastructure/database     pgxpool + concrete UnitOfWork
 └─ internal/infrastructure/scheduler    cron-scheduled jobs (robfig/cron)
-└─ internal/adapter/{gateway,schema,security,frankfurter}
+└─ internal/adapter/{gateway,storage,schema,security,frankfurter}
 └─ internal/service/{...} + workflow    use cases; each service owns its repository port
 └─ internal/domain                      plain structs + Validate(); imports nothing internal
 └─ utils/{configuration,logger}
@@ -107,6 +108,7 @@ one of the two (`public.Post(...)` vs `protected.Get(...)`).
 - **Error flow**: gateway returns `(nil, nil)` for absent rows → service raises a `domain.DomainError` carrying a `domain.ErrorKind` → `kernel.WriteError` maps the kind (validation→400, unauthorized→401, not found→404, conflict→409, internal/unknown→500) and writes the standard error envelope.
 - **Transaction demarcation** lives in services (`Update`/`Delete`) and workflows (multi-service ops), never in handlers.
 - **Logging lives at the boundary only** — `cmd/server`, `internal/infrastructure/{database,http_server}`, `scripts/*`. Never in `internal/domain`/`internal/service`/`internal/adapter`: those return errors, the boundary logs them once with full request context. Logging must also stay independent of response/return-value assembly — `http_server/kernel/respond.go`'s `Write*` helpers never gain a logging side effect. See [`utils/logger`](utils/logger/README.md).
+- **Transaction attachments** pair a nullable-`transaction_id` metadata row (`transaction_attachments`) with bytes in a private S3-compatible bucket. A file can be uploaded before its transaction exists as a draft, then linked exactly once — at create time via `attachment_ids` or later via a nested `PUT`. Bytes are streamed (`r.MultipartReader`, never `ParseMultipartForm`) to the shared [`object_storage.Store`](internal/service/object_storage/README.md) port; each purpose scopes that store with `object_storage.Namespaced` at wiring (transaction attachments use `transaction-attachments/<uuid>` in the bucket), and the two upload routes are the only ones exempt from `HTTP_MAX_BODY_BYTES` (there is deliberately **no** application byte/quota limit). Deletes use the exact stored `VersionID`. See [`internal/service/transaction_attachment`](internal/service/transaction_attachment/README.md) and [`internal/adapter/storage`](internal/adapter/storage/README.md).
 
 ## Running locally
 
@@ -165,6 +167,10 @@ go test -race ./...                   # fast tests, race detector
   (testcontainers-go), never a mocked `DBTX` — a fake would only verify the
   mock, not the query. Isolated per-test via a rolled-back transaction, not
   `TRUNCATE`.
+- **`adapter/storage`:** integration-tagged, real MinIO via
+  [`internal/tests/s3test`](internal/tests/s3test/README.md)
+  (testcontainers-go), never a mocked S3 client. Set `JWW_TEST_MINIO_IMAGE`
+  to a mirror if the default `pgsty/minio` image is unreachable.
 - **`http_server/kernel` and `routers/<resource>`:** `httptest`-based, real
   services over local hand-written fake repositories — no real Postgres.
 - **`tests/e2e/`:** full-stack HTTP journeys (real Postgres, real adapters, no

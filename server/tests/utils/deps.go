@@ -1,19 +1,24 @@
 package utils
 
 import (
+	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"jww/internal/adapter/gateway"
 	"jww/internal/adapter/security"
+	"jww/internal/adapter/storage"
 	"jww/internal/domain"
 	"jww/internal/infrastructure/database"
 	"jww/internal/infrastructure/http_server/kernel"
 	"jww/internal/service/auth"
 	"jww/internal/service/currency"
 	currency_exchange_rate "jww/internal/service/currency_exchange_rate"
+	"jww/internal/service/object_storage"
 	"jww/internal/service/transaction"
+	"jww/internal/service/transaction_attachment"
 	"jww/internal/service/transaction_category"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
@@ -32,7 +37,10 @@ func (stubRateSource) Rates(domain.AppContext, []string, time.Time) (currency_ex
 // the same construction cmd/server/deps.go's buildDeps does. Duplicated here
 // (rather than imported) because buildDeps is unexported in package main;
 // keep this in sync if that wiring changes — see cmd/server/README.md.
-func BuildTestDeps(pool *pgxpool.Pool, jwtSecret string) *kernel.Deps {
+//
+// storageConfig points the attachment storage adapter at the test MinIO
+// instance (see internal/tests/s3test).
+func BuildTestDeps(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, storageConfig storage.Config) (*kernel.Deps, error) {
 	uowManager := database.NewPostgresUnitOfWorkManager(pool)
 	passwordHasher := security.NewArgon2PasswordHasher()
 	tokenService := security.NewJwtTokenService(security.Config{
@@ -46,6 +54,12 @@ func BuildTestDeps(pool *pgxpool.Pool, jwtSecret string) *kernel.Deps {
 	exchangeRateRepo := gateway.NewPostgresCurrencyExchangeRateRepository(pool)
 	categoryRepo := gateway.NewPostgresTransactionCategoryRepository(pool)
 	transactionRepo := gateway.NewPostgresTransactionRepository(pool)
+	attachmentRepo := gateway.NewPostgresTransactionAttachmentRepository(pool)
+
+	objectStore, err := storage.NewS3Store(ctx, storageConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	authService := auth.NewService(userRepo, passwordHasher, tokenService)
 	userService := user.NewService(userRepo, passwordHasher, uowManager)
@@ -53,6 +67,8 @@ func BuildTestDeps(pool *pgxpool.Pool, jwtSecret string) *kernel.Deps {
 	exchangeRateService := currency_exchange_rate.NewService(exchangeRateRepo)
 	categoryService := transaction_category.NewService(categoryRepo, uowManager)
 	transactionService := transaction.NewService(transactionRepo, uowManager)
+	attachmentStore := object_storage.Namespaced(objectStore, object_storage.StorageTransactionAttachmentsNamespace)
+	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStore, reportOrphanedObject)
 
 	return &kernel.Deps{
 		AuthService:                  authService,
@@ -62,9 +78,14 @@ func BuildTestDeps(pool *pgxpool.Pool, jwtSecret string) *kernel.Deps {
 		CurrencyExchangeRateWorkflow: workflow.NewCurrencyExchangeRateWorkflow(currencyService, exchangeRateService, stubRateSource{}, uowManager),
 		TransactionCategoryService:   categoryService,
 		TransactionService:           transactionService,
-		TransactionWorkflow:          workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, uowManager),
+		TransactionAttachmentService: attachmentService,
+		TransactionWorkflow:          workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, attachmentService, uowManager),
 		SummaryWorkflow:              workflow.NewSummaryWorkflow(currencyService, userService, transactionService, exchangeRateService, uowManager),
 		CorsOrigins:                  []string{"*"},
 		MaxBodyBytes:                 1 << 20,
-	}
+	}, nil
 }
+
+// reportOrphanedObject mirrors cmd/server's reporter. Tests don't capture logs;
+// the reporter exists so the wiring matches production.
+func reportOrphanedObject(_ domain.AppContext, _ uuid.UUID, _ error) {}

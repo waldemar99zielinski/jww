@@ -103,7 +103,7 @@ func TestPostgresTransactionRepository_Create_MismatchedCategoryTypeViolatesComp
 	assert.Error(t, err, "transactions_category_type_fk should reject type/category_id mismatch")
 }
 
-func TestPostgresTransactionRepository_List_FiltersByUserTypeAndDateRange(t *testing.T) {
+func TestPostgresTransactionRepository_List_FiltersByExplicitFields(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	appCtx := pgtest.AppContext(ctx)
@@ -134,7 +134,21 @@ func TestPostgresTransactionRepository_List_FiltersByUserTypeAndDateRange(t *tes
 	})
 
 	t.Run("filter by user", func(t *testing.T) {
-		list, err := repo.List(appCtx, &transaction.Filter{User: &incomeFx.user}, uow)
+		list, err := repo.List(appCtx, &transaction.Filter{UserID: &incomeFx.user.ID}, uow)
+		require.NoError(t, err)
+		ids := idsOf(list)
+		assert.ElementsMatch(t, []int64{recentIncome.ID}, ids)
+	})
+
+	t.Run("filter by category", func(t *testing.T) {
+		list, err := repo.List(appCtx, &transaction.Filter{CategoryID: &expenseFx.category.ID}, uow)
+		require.NoError(t, err)
+		ids := idsOf(list)
+		assert.ElementsMatch(t, []int64{oldExpense.ID, recentExpense.ID}, ids)
+	})
+
+	t.Run("filter by currency code", func(t *testing.T) {
+		list, err := repo.List(appCtx, &transaction.Filter{CurrencyCode: incomeFx.currency.Code}, uow)
 		require.NoError(t, err)
 		ids := idsOf(list)
 		assert.ElementsMatch(t, []int64{recentIncome.ID}, ids)
@@ -149,10 +163,18 @@ func TestPostgresTransactionRepository_List_FiltersByUserTypeAndDateRange(t *tes
 		assert.NotContains(t, ids, oldExpense.ID)
 	})
 
-	t.Run("no filter returns everything created in this transaction", func(t *testing.T) {
+	t.Run("no filter returns everything newest first", func(t *testing.T) {
 		list, err := repo.List(appCtx, nil, uow)
 		require.NoError(t, err)
-		assert.Len(t, list, 3)
+		require.Len(t, list, 3)
+		assert.Equal(t, []int64{recentIncome.ID, recentExpense.ID, oldExpense.ID}, idsOf(list))
+	})
+
+	t.Run("empty filter returns everything newest first", func(t *testing.T) {
+		list, err := repo.List(appCtx, &transaction.Filter{}, uow)
+		require.NoError(t, err)
+		require.Len(t, list, 3)
+		assert.Equal(t, []int64{recentIncome.ID, recentExpense.ID, oldExpense.ID}, idsOf(list))
 	})
 }
 

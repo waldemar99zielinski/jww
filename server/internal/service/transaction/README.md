@@ -1,15 +1,16 @@
 # internal/service/transaction
 
-**Role.** CRUD/list use cases for transactions, plus the reusable `Filter` query object. Owns transactions for `Update`/`Delete`.
+**Role.** CRUD/list use cases for transactions, plus the reusable `Filter` query object. Owns transactions for `Update` and standalone `Delete`; `Delete` can also join a workflow-owned UoW.
 
 ## Files
 
-- `transaction.go` — `Repository`; `Service{ repository, uowManager }`; `NewService`.
+- `repository.go` — `Repository`.
+- `transaction.go` — `Service{ repository, uowManager }`; `NewService`.
   - `Create` takes **explicit scalar fields** (not a `Transaction`) because the DB generates `id`/`created_at`, and returns the persisted `*domain.Transaction`.
   - `GetByID(ctx, int64, uow...)` — nil → `domain.NewTransactionNotFoundError(id)`.
   - `List(ctx, *Filter, uow...)` — passthrough.
-  - `Update`/`Delete` — own-UoW template, no `uow` param.
-- `filter.go` — `Filter{ User, Category *domain.TransactionCategory, Type, Currency, Source, CreatedFrom, CreatedTo }` (all optional pointers) with `Validate()` covering range ordering and `Category.Type == Type`.
+  - `Update` owns its UoW. `Delete(ctx, transaction, uow...)` owns one when called standalone and otherwise forwards the caller-owned UoW without finishing or restoring it.
+- `filter.go` — the one shared transaction query object: `Filter{ UserID, CategoryID, Type, CurrencyCode, Source, CreatedFrom, CreatedTo }`. Related-resource fields are flattened and explicitly named instead of carrying nested domain structs. `Validate()` covers date-range ordering.
 
 ## Rules
 

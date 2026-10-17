@@ -2,11 +2,10 @@
 
 **Role.** User CRUD. Hashes passwords via an injected `PasswordHasher`. Owns transactions for `Update`/`Delete`.
 
-## Files — `user.go`
+## Files
 
-- `Repository`: `Create`, `GetByID(ctx, uuid.UUID, uow...)`, `List`, `Update`, `Delete`.
-- `PasswordHasher`: `Hash`, `Verify` — **independently owned duplicate** of the `auth` port (one adapter satisfies both).
-- `Service{ repository, passwordHasher, uowManager }`; `NewService(repo, hasher, uowManager)`.
+- `repository.go` — `Repository`: `Create`, `GetByID(ctx, uuid.UUID, uow...)`, `List`, `Update`, `Delete`.
+- `user.go` — `PasswordHasher` (`Hash`, `Verify`) and `Service{ repository, passwordHasher, uowManager }`; `NewService(repo, hasher, uowManager)`. The hasher is an independently owned duplicate of the `auth` port (one adapter satisfies both).
 - `Create(ctx, username, password, displayName string, uow...)` — `passwordHasher.Hash(password)` **first** (fail before building the entity), then `domain.User{ID: uuid.New(), PasswordHash: hash, CreatedAt: time.Now().UTC()}`, `Validate()`, repo create.
 - `GetByID` — nil → `domain.NewUserNotFoundError(id)`.
 - `List` — passthrough.

@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -153,6 +154,72 @@ func TestLimitRequestBody(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 	})
+}
+
+func TestLimitRequestBody_ExemptsAttachmentUploadRoutes(t *testing.T) {
+	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	})
+	big := strings.Repeat("x", 256)
+
+	t.Run("standalone draft upload is exempt", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/transaction-attachments", strings.NewReader(big))
+		rec := httptest.NewRecorder()
+		LimitRequestBody(10)(echo).ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Len(t, rec.Body.String(), len(big))
+	})
+
+	t.Run("nested upload is exempt", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/42/attachments", strings.NewReader(big))
+		rec := httptest.NewRecorder()
+		LimitRequestBody(10)(echo).ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Len(t, rec.Body.String(), len(big))
+	})
+
+	t.Run("ordinary endpoints stay capped", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions", strings.NewReader(big))
+		rec := httptest.NewRecorder()
+		LimitRequestBody(10)(echo).ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("multipart is not exempt globally", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/some/other", strings.NewReader(big))
+		req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+		rec := httptest.NewRecorder()
+		LimitRequestBody(10)(echo).ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+}
+
+func TestIsAttachmentUploadRoute(t *testing.T) {
+	tests := []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodPost, "/api/v1/transaction-attachments", true},
+		{http.MethodPost, "/api/v1/transactions/42/attachments", true},
+		{http.MethodGet, "/api/v1/transaction-attachments", false},
+		{http.MethodPost, "/api/v1/transactions", false},
+		{http.MethodPost, "/api/v1/transactions/42/attachments/7", false},
+		{http.MethodPost, "/api/v1/transactions/42/attachments/7/content", false},
+		{http.MethodPut, "/api/v1/transactions/42/attachments/7", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			assert.Equal(t, tt.want, isAttachmentUploadRoute(req))
+		})
+	}
 }
 
 // --- bearerToken / ensureFlowID / RequestContext ---------------------------------------------------------

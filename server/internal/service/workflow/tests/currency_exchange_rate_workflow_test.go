@@ -123,7 +123,7 @@ func TestCurrencyExchangeRateWorkflow_List_IsAPassthroughWithNoTransaction(t *te
 	uowManager := &fakeUoWManager{}
 	w := newExchangeRateWorkflow(currencyRepo, rateRepo, uowManager)
 
-	list, err := w.List(newAppContext())
+	list, err := w.List(newAppContext(), currency_exchange_rate.Filter{})
 
 	require.NoError(t, err)
 	assert.Len(t, list, 1)

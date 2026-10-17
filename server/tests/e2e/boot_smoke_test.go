@@ -46,6 +46,12 @@ func TestCmdServerBoots(t *testing.T) {
 		"DATABASE_URL="+pgPool.DSN,
 		"JWT_SECRET_KEY=e2e-boot-smoke-throwaway-secret",
 		"LOG_PRETTY=false",
+		"OBJECT_STORAGE_S3_BUCKET="+minioStore.Config.Bucket,
+		"OBJECT_STORAGE_S3_REGION="+minioStore.Config.Region,
+		"OBJECT_STORAGE_S3_ENDPOINT="+minioStore.Config.Endpoint,
+		"OBJECT_STORAGE_S3_FORCE_PATH_STYLE=true",
+		"OBJECT_STORAGE_S3_ACCESS_KEY_ID="+minioStore.Config.AccessKeyID,
+		"OBJECT_STORAGE_S3_SECRET_ACCESS_KEY="+minioStore.Config.SecretAccessKey,
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

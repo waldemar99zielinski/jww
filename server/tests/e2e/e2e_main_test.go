@@ -18,6 +18,7 @@ import (
 	"jww/internal/domain"
 	http_server "jww/internal/infrastructure/http_server"
 	"jww/internal/tests/pgtest"
+	"jww/internal/tests/s3test"
 	"jww/tests/utils"
 )
 
@@ -31,6 +32,7 @@ const seededPassword = "e2e-seeded-user-password"
 
 var (
 	pgPool     *pgtest.Pool
+	minioStore *s3test.Bucket
 	httpSrv    *httptest.Server
 	apiClient  *utils.Client
 	seededUser *domain.User
@@ -45,11 +47,24 @@ func TestMain(m *testing.M) {
 	}
 	pgPool = pool
 
-	deps := utils.BuildTestDeps(pool.Pool, testJWTSecret)
+	store, err := s3test.Start(ctx, "jww-e2e")
+	if err != nil {
+		pool.Close(ctx)
+		panic("e2e: starting MinIO: " + err.Error())
+	}
+	minioStore = store
+
+	deps, err := utils.BuildTestDeps(ctx, pool.Pool, testJWTSecret, store.Config)
+	if err != nil {
+		store.Close(ctx)
+		pool.Close(ctx)
+		panic("e2e: building deps: " + err.Error())
+	}
 
 	appCtx := pgtest.AppContext(ctx)
 	created, err := deps.UserService.Create(appCtx, "e2e-seeded-user", seededPassword, "E2E Seeded User")
 	if err != nil {
+		store.Close(ctx)
 		pool.Close(ctx)
 		panic("e2e: seeding user: " + err.Error())
 	}
@@ -61,6 +76,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	httpSrv.Close()
+	store.Close(ctx)
 	pool.Close(ctx)
 	os.Exit(code)
 }

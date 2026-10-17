@@ -17,6 +17,7 @@ import (
 	"jww/internal/infrastructure/http_server/routers/currency_exchange_rate"
 	"jww/internal/infrastructure/http_server/routers/summary"
 	"jww/internal/infrastructure/http_server/routers/transaction"
+	transaction_attachment "jww/internal/infrastructure/http_server/routers/transaction_attachment"
 	"jww/internal/infrastructure/http_server/routers/transaction_category"
 	"jww/internal/infrastructure/http_server/routers/user"
 )
@@ -83,6 +84,7 @@ func NewRouter(deps *kernel.Deps) http.Handler {
 		currency_exchange_rate.Mount(public, protected, deps)
 		transaction_category.Mount(public, protected, deps)
 		transaction.Mount(public, protected, deps)
+		transaction_attachment.Mount(public, protected, deps)
 		summary.Mount(public, protected, deps)
 	})
 

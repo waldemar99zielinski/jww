@@ -45,20 +45,20 @@ func (w *SummaryWorkflow) Generate(
 	periodStart *time.Time,
 	userID *uuid.UUID,
 ) (*domain.Summary, error) {
-	active, err := w.uowManager.Create(ctx)
+	uow, err := w.uowManager.Create(ctx)
 	if err != nil {
 		return nil, err
 	}
-	currency, err := w.currencyService.GetByCode(ctx, currencyCode, active)
+	currency, err := w.currencyService.GetByCode(ctx, currencyCode, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
 	var u *domain.User
 	if userID != nil {
-		u, err = w.userService.GetByID(ctx, *userID, active)
+		u, err = w.userService.GetByID(ctx, *userID, uow)
 		if err != nil {
-			_ = active.Restore(ctx)
+			_ = uow.Restore(ctx)
 			return nil, err
 		}
 	}
@@ -71,12 +71,12 @@ func (w *SummaryWorkflow) Generate(
 	createdTo := time.Date(periodEnd.Year(), periodEnd.Month(), periodEnd.Day(), 23, 59, 59, 999999999, time.UTC)
 
 	transactions, err := w.transactionService.List(ctx, &transaction.Filter{
-		User:        u,
+		UserID:      userID,
 		CreatedFrom: createdFrom,
 		CreatedTo:   &createdTo,
-	}, active)
+	}, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
 
@@ -84,9 +84,9 @@ func (w *SummaryWorkflow) Generate(
 
 	var totalIncome, totalExpense domain.Money
 	for _, t := range transactions {
-		converted, err := w.convert(ctx, t, *currency, active)
+		converted, err := w.convert(ctx, t, *currency, uow)
 		if err != nil {
-			_ = active.Restore(ctx)
+			_ = uow.Restore(ctx)
 			return nil, err
 		}
 		if t.Type == domain.TransactionTypeIncome {
@@ -109,10 +109,10 @@ func (w *SummaryWorkflow) Generate(
 		User:         u,
 	}
 	if err := summary.Validate(); err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	if err := active.Finish(ctx); err != nil {
+	if err := uow.Finish(ctx); err != nil {
 		return nil, err
 	}
 	return &summary, nil

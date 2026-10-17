@@ -52,6 +52,7 @@ func TestWriteErrorMapsKinds(t *testing.T) {
 	}{
 		{"not found", domain.NewCurrencyNotFoundError("USD"), http.StatusNotFound, CodeNotFound},
 		{"authentication", domain.NewAuthenticationError(), http.StatusUnauthorized, CodeUnauthorized},
+		{"unavailable", domain.NewObjectStorageUnavailableError(errors.New("dial tcp")), http.StatusServiceUnavailable, CodeServiceUnavailable},
 		{"unknown error is internal", errors.New("boom"), http.StatusInternalServerError, CodeInternal},
 	}
 

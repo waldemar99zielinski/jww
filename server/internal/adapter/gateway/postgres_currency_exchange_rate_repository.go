@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -147,13 +148,27 @@ func (r *PostgresCurrencyExchangeRateRepository) GetByCurrencies(ctx domain.AppC
 	return scanExchangeRateRow(db.QueryRow(ctx.Context(), sql, args...))
 }
 
-func (r *PostgresCurrencyExchangeRateRepository) List(ctx domain.AppContext, uow ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
+func (r *PostgresCurrencyExchangeRateRepository) List(ctx domain.AppContext, filter *currency_exchange_rate.Filter, uow ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
 	db, err := dbFromUnitOfWork(r.db, uow...)
 	if err != nil {
 		return nil, err
 	}
-	sql, args, err := psql.Select(exchangeRateSelectColumns[1:]).
-		From(exchangeRateFrom[1:]).
+	builder := psql.Select(exchangeRateSelectColumns[1:]).From(exchangeRateFrom[1:])
+	if filter != nil {
+		if filter.FromCurrencyCode != "" {
+			builder = builder.Where("er.from_currency_code = ?", filter.FromCurrencyCode)
+		}
+		if filter.ToCurrencyCode != "" {
+			builder = builder.Where("er.to_currency_code = ?", filter.ToCurrencyCode)
+		}
+		if filter.RecordedFrom != nil {
+			builder = builder.Where(squirrel.GtOrEq{"er.recorded_at": *filter.RecordedFrom})
+		}
+		if filter.RecordedTo != nil {
+			builder = builder.Where(squirrel.LtOrEq{"er.recorded_at": *filter.RecordedTo})
+		}
+	}
+	sql, args, err := builder.
 		OrderBy("er.from_currency_code", "er.to_currency_code", "er.recorded_at").
 		ToSql()
 	if err != nil {

@@ -1,21 +1,35 @@
 # internal/infrastructure/http_server
 
-**Clean Architecture layer: Frameworks & Drivers (HTTP entry / composition).** Assembles `kernel` (adapters) and `routers` (handlers) into a running server.
+**Clean Architecture layer: Frameworks & Drivers (HTTP entry / composition).** Assembles `kernel` (shared HTTP adapters), `routers` (resource handlers), and `utils` (dependency-free HTTP utilities) into a running server.
 
 **Role.** The HTTP **composition root**. Builds the chi router, attaches cross-cutting middleware, and hands each resource subpackage a **public** router and a **protected** router (pre-guarded with `RequireAuth`) so each resource decides where each route belongs. Also owns `http_server.Config`.
 
 > This package imports `kernel` + every `routers/*`. Nothing here may be imported by `kernel` or `routers/*` — that would be an import cycle.
 
+## Directory ownership
+
+- [`kernel/`](kernel/README.md) — shared HTTP application plumbing: dependencies, middleware, request context, decoding, response writing, multipart handling, and HTTP error mapping. Code here may depend on domain and service types.
+- [`routers/`](routers/README.md) — resource-specific route registration and handlers. Put endpoint behavior here, grouped by resource.
+- [`utils/`](utils/README.md) — small, resource-agnostic, dependency-free HTTP utilities. These helpers may be imported by `kernel` and routers, so they must not import either of them.
+- Root package (`server.go`, `config.go`) — composition only: configure the server, middleware, CORS, and mount resource routers.
+
+When deciding where code belongs:
+
+1. If it implements one resource's endpoint behavior, put it in `routers/<resource>`.
+2. If it coordinates shared request/response behavior or needs `Deps`, domain, or service types, put it in `kernel`.
+3. If it is a small pure helper that only understands HTTP-level values such as paths and has no application dependencies, put it in `utils`.
+4. If it wires packages together or configures the running HTTP server, keep it in the root package.
+
 ## Files
 
 - `server.go` (package doc)
-  - `New(deps *kernel.Deps, cfg Config) *http.Server` — `{Addr: cfg.Addr(), Handler: NewRouter(deps)}` plus fixed `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout` (Slowloris protection).
+  - `New(deps *kernel.Deps, cfg Config) *http.Server` — `{Addr: cfg.Addr(), Handler: NewRouter(deps)}` plus fixed `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout` (Slowloris protection). The attachment upload/download handlers clear the read/write deadline per request after auth.
   - `NewRouter(deps *kernel.Deps) http.Handler`:
     ```go
     r := chi.NewRouter()
     r.Use(kernel.RequestLogger)   // outermost: sees final status
     r.Use(kernel.Recoverer)
-    r.Use(kernel.LimitRequestBody(deps.MaxBodyBytes)) // caps every body before it reaches a handler
+    r.Use(kernel.LimitRequestBody(deps.MaxBodyBytes)) // caps every body before it reaches a handler (except the two attachment-upload routes)
     r.Use(cors.Handler(cors.Options{ AllowedOrigins: deps.CorsOrigins, /* ... */ }))
 
     r.Route("/api", func(api chi.Router) {
@@ -27,12 +41,14 @@
     ```
 - `config.go` — `Config{ Host, Port, CorsOrigins, MaxBodyBytes }` (`HTTP_HOST`/`HTTP_PORT`/`HTTP_CORS_ORIGINS`/`HTTP_MAX_BODY_BYTES`, default 1 MiB); `Addr()`, `CorsOriginsList()`.
 - `routing_verify_test.go` — table test asserting public vs protected status codes. Extend it when auth expectations change.
+- `utils/path.go` — matches route-like path patterns and extracts named path segments; see [`utils/`](utils/README.md).
 
 ## Rules
 
 - Middleware order matters: `RequestLogger` outermost, then `Recoverer`, then `LimitRequestBody`, then CORS; all `Use` before `Route`.
 - `public` and `protected` share **one** chi tree (`With` copies the tree and prepends middleware). Pass both to every `Mount`.
 - This is the only importer of `routers/*`.
+- Keep `utils` dependency-free within the HTTP server: `kernel` and routers may import it, but it must not import them or the root package.
 
 ## How to add a resource router
 

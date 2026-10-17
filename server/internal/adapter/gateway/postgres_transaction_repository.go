@@ -133,17 +133,17 @@ func (r *PostgresTransactionRepository) List(ctx domain.AppContext, filter *tran
 	builder := psql.Select(transactionSelectColumns[1:]).From(transactionFrom[1:])
 
 	if filter != nil {
-		if filter.User != nil {
-			builder = builder.Where("t.user_id = ?", filter.User.ID)
+		if filter.UserID != nil {
+			builder = builder.Where("t.user_id = ?", *filter.UserID)
 		}
-		if filter.Category != nil {
-			builder = builder.Where("t.category_id = ?", filter.Category.ID)
+		if filter.CategoryID != nil {
+			builder = builder.Where("t.category_id = ?", *filter.CategoryID)
 		}
 		if filter.Type != nil {
 			builder = builder.Where("t.type = ?", string(*filter.Type))
 		}
-		if filter.Currency != nil {
-			builder = builder.Where("t.currency_code = ?", filter.Currency.Code)
+		if filter.CurrencyCode != "" {
+			builder = builder.Where("t.currency_code = ?", filter.CurrencyCode)
 		}
 		if filter.Source != nil {
 			builder = builder.Where("t.source = ?", string(*filter.Source))
@@ -156,7 +156,9 @@ func (r *PostgresTransactionRepository) List(ctx domain.AppContext, filter *tran
 		}
 	}
 
-	sql, args, err := builder.OrderBy("t.created_at").ToSql()
+	// The default timeline is newest-first. ID makes rows with an identical
+	// timestamp deterministic (and matches insertion order for BIGSERIAL ids).
+	sql, args, err := builder.OrderBy("t.created_at DESC", "t.id DESC").ToSql()
 	if err != nil {
 		return nil, err
 	}

@@ -126,57 +126,57 @@ func (w *CurrencyExchangeRateWorkflow) Sync(ctx domain.AppContext, asOf time.Tim
 }
 
 func (w *CurrencyExchangeRateWorkflow) Create(ctx domain.AppContext, fromCode, toCode string, rate domain.ExchangeRate) (*domain.CurrencyExchangeRate, error) {
-	active, err := w.uowManager.Create(ctx)
+	uow, err := w.uowManager.Create(ctx)
 	if err != nil {
 		return nil, err
 	}
-	from, err := w.currencyService.GetByCode(ctx, fromCode, active)
+	from, err := w.currencyService.GetByCode(ctx, fromCode, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	to, err := w.currencyService.GetByCode(ctx, toCode, active)
+	to, err := w.currencyService.GetByCode(ctx, toCode, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	exchangeRate, err := w.exchangeRateService.Create(ctx, *from, *to, rate, active)
+	exchangeRate, err := w.exchangeRateService.Create(ctx, *from, *to, rate, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	if err := active.Finish(ctx); err != nil {
+	if err := uow.Finish(ctx); err != nil {
 		return nil, err
 	}
 	return exchangeRate, nil
 }
 
 func (w *CurrencyExchangeRateWorkflow) GetByCurrencies(ctx domain.AppContext, fromCode, toCode string, asOf time.Time) (*domain.CurrencyExchangeRate, error) {
-	active, err := w.uowManager.Create(ctx)
+	uow, err := w.uowManager.Create(ctx)
 	if err != nil {
 		return nil, err
 	}
-	from, err := w.currencyService.GetByCode(ctx, fromCode, active)
+	from, err := w.currencyService.GetByCode(ctx, fromCode, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	to, err := w.currencyService.GetByCode(ctx, toCode, active)
+	to, err := w.currencyService.GetByCode(ctx, toCode, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	exchangeRate, err := w.exchangeRateService.GetByCurrencies(ctx, *from, *to, asOf, active)
+	exchangeRate, err := w.exchangeRateService.GetByCurrencies(ctx, *from, *to, asOf, uow)
 	if err != nil {
-		_ = active.Restore(ctx)
+		_ = uow.Restore(ctx)
 		return nil, err
 	}
-	if err := active.Finish(ctx); err != nil {
+	if err := uow.Finish(ctx); err != nil {
 		return nil, err
 	}
 	return exchangeRate, nil
 }
 
-func (w *CurrencyExchangeRateWorkflow) List(ctx domain.AppContext) ([]domain.CurrencyExchangeRate, error) {
-	return w.exchangeRateService.List(ctx)
+func (w *CurrencyExchangeRateWorkflow) List(ctx domain.AppContext, filter currency_exchange_rate.Filter) ([]domain.CurrencyExchangeRate, error) {
+	return w.exchangeRateService.List(ctx, &filter)
 }

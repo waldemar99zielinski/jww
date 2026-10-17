@@ -32,6 +32,8 @@ type fakeRepo struct {
 	getErr       error
 	listResult   []domain.CurrencyExchangeRate
 	listErr      error
+	listCalls    int
+	listFilter   *currency_exchange_rate.Filter
 	upsertCalls  int
 	upsertErr    error
 	upserted     []domain.CurrencyExchangeRateFlatten
@@ -70,7 +72,9 @@ func (r *fakeRepo) GetByCurrencies(_ domain.AppContext, from, to domain.Currency
 	return nil, nil
 }
 
-func (r *fakeRepo) List(domain.AppContext, ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
+func (r *fakeRepo) List(_ domain.AppContext, filter *currency_exchange_rate.Filter, _ ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
+	r.listCalls++
+	r.listFilter = filter
 	if r.listErr != nil {
 		return nil, r.listErr
 	}
@@ -127,9 +131,35 @@ func TestService_List_IsAPassthrough(t *testing.T) {
 	repo.listResult = want
 	svc := currency_exchange_rate.NewService(repo)
 
-	got, err := svc.List(newAppContext())
+	got, err := svc.List(newAppContext(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
+}
+
+func TestService_List_Filter(t *testing.T) {
+	t.Run("passes explicit fields through", func(t *testing.T) {
+		repo := newFakeRepo()
+		svc := currency_exchange_rate.NewService(repo)
+		filter := &currency_exchange_rate.Filter{FromCurrencyCode: "USD", ToCurrencyCode: "EUR"}
+
+		_, err := svc.List(newAppContext(), filter)
+
+		require.NoError(t, err)
+		assert.Same(t, filter, repo.listFilter)
+		assert.Equal(t, 1, repo.listCalls)
+	})
+
+	t.Run("invalid range never calls repository", func(t *testing.T) {
+		repo := newFakeRepo()
+		svc := currency_exchange_rate.NewService(repo)
+		from := time.Now().UTC()
+		to := from.Add(-time.Hour)
+
+		_, err := svc.List(newAppContext(), &currency_exchange_rate.Filter{RecordedFrom: &from, RecordedTo: &to})
+
+		require.Error(t, err)
+		assert.Zero(t, repo.listCalls)
+	})
 }
 
 func TestService_UpsertMany_EmptyBatchIsANoOp(t *testing.T) {

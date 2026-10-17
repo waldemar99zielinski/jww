@@ -18,12 +18,18 @@ an ordinary package instead — the same reasoning behind
   httpClient)` — `(*Client) Do(t, method, path, token, body, v) int` sends a
   request and decodes the envelope into `v`, returning the status code;
   `(*Client) Login(t, username, password) string` logs in and returns the
-  access token. `DecodeBody(t, resp, v)` is the shared raw decode step.
-- `BuildTestDeps(pool *pgxpool.Pool, jwtSecret string) *kernel.Deps` — wires
-  every repository/service/workflow against `pool`, mirroring
-  `cmd/server/deps.go`'s `buildDeps`. Duplicated rather than imported
-  because `buildDeps` is unexported in `package main` — keep the two in
-  sync if that wiring changes; see `cmd/server/README.md`.
+  access token. `(*Client) UploadFile(t, path, token, filename, contentType,
+  content) (*http.Response, []byte)` posts one streaming multipart `file`
+  part and returns the raw response; `(*Client) Download(t, path, token) (int,
+  []byte, http.Header)` gets the one bytes-not-envelope endpoint.
+  `DecodeBody(t, resp, v)` is the shared raw decode step.
+- `BuildTestDeps(ctx, pool *pgxpool.Pool, jwtSecret string, storageConfig
+  storage.Config) (*kernel.Deps, error)` — wires every
+  repository/service/workflow against `pool`, mirroring
+  `cmd/server/deps.go`'s `buildDeps` (including the S3 attachment storage
+  adapter, pointed at the caller's MinIO via `storageConfig`). Duplicated
+  rather than imported because `buildDeps` is unexported in `package main` —
+  keep the two in sync if that wiring changes; see `cmd/server/README.md`.
 - `FreePort() (int, error)` — asks the OS for an ephemeral TCP port and
   releases it immediately, for a test that needs to bind its own server.
 - `ModuleRoot(t testing.TB) string` — finds the directory containing

@@ -23,6 +23,7 @@ func TestNotFoundErrors_KindIsNotFoundAndErrorsAsWorks(t *testing.T) {
 		{"CurrencyNotFoundError", NewCurrencyNotFoundError("USD")},
 		{"CurrencyExchangeRateNotFoundError", NewCurrencyExchangeRateNotFoundError("USD", "EUR")},
 		{"TransactionNotFoundError", NewTransactionNotFoundError(42)},
+		{"TransactionAttachmentNotFoundError", NewTransactionAttachmentNotFoundError(uuid.New())},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -41,6 +42,36 @@ func TestAuthenticationError_KindIsUnauthorized(t *testing.T) {
 	require.True(t, errors.As(error(err), &domainErr))
 	assert.Equal(t, ErrorKindUnauthorized, domainErr.Kind())
 	assert.NotEmpty(t, domainErr.Error())
+}
+
+func TestAttachmentErrors_KindMapping(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want ErrorKind
+	}{
+		{"already linked is conflict", NewAttachmentAlreadyLinkedError(uuid.New()), ErrorKindConflict},
+		{"validation", NewValidationError("bad input"), ErrorKindValidation},
+		{"storage unavailable", NewObjectStorageUnavailableError(errors.New("dial tcp")), ErrorKindUnavailable},
+		{"integrity", NewAttachmentIntegrityError(uuid.New(), errors.New("no such key")), ErrorKindInternal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var domainErr DomainError
+			require.True(t, errors.As(tt.err, &domainErr))
+			assert.Equal(t, tt.want, domainErr.Kind())
+			assert.NotEmpty(t, domainErr.Error())
+		})
+	}
+}
+
+// TestStorageUnavailableError_DoesNotLeakCause guards the client-facing message:
+// provider/endpoint detail must not appear in Error(), only via Unwrap.
+func TestStorageUnavailableError_DoesNotLeakCause(t *testing.T) {
+	err := NewObjectStorageUnavailableError(errors.New("https://minio.internal:9000 bucket=secret"))
+	assert.NotContains(t, err.Error(), "minio.internal")
+	assert.NotContains(t, err.Error(), "secret")
+	assert.ErrorContains(t, errors.Unwrap(err), "minio.internal")
 }
 
 // TestAuthenticationError_DoesNotEnumerate guards the documented anti-enumeration

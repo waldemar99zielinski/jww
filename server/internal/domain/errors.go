@@ -24,6 +24,10 @@ const (
 	ErrorKindUnauthorized
 	// ErrorKindInternal means an unexpected server-side failure.
 	ErrorKindInternal
+	// ErrorKindUnavailable means a dependency (e.g. object storage) is
+	// temporarily unavailable and the caller may retry. The HTTP kernel maps
+	// it to 503.
+	ErrorKindUnavailable
 )
 
 // DomainError marks every error type below so the HTTP layer can recognize
@@ -115,4 +119,78 @@ func NewTransactionNotFoundError(transactionID int64) *TransactionNotFoundError 
 		baseDomainError: baseDomainError{kind: ErrorKindNotFound, message: fmt.Sprintf("Transaction %d not found", transactionID)},
 		TransactionID:   transactionID,
 	}
+}
+
+type TransactionAttachmentNotFoundError struct {
+	baseDomainError
+	AttachmentID uuid.UUID
+}
+
+func NewTransactionAttachmentNotFoundError(attachmentID uuid.UUID) *TransactionAttachmentNotFoundError {
+	return &TransactionAttachmentNotFoundError{
+		baseDomainError: baseDomainError{kind: ErrorKindNotFound, message: fmt.Sprintf("TransactionAttachment %s not found", attachmentID)},
+		AttachmentID:    attachmentID,
+	}
+}
+
+// AttachmentAlreadyLinkedError means an attachment that is already attached to
+// a transaction was claimed again by a different one. Linking is one-way and
+// single-transaction, so this is a conflict, not a validation failure.
+type AttachmentAlreadyLinkedError struct {
+	baseDomainError
+	AttachmentID uuid.UUID
+}
+
+func NewAttachmentAlreadyLinkedError(attachmentID uuid.UUID) *AttachmentAlreadyLinkedError {
+	return &AttachmentAlreadyLinkedError{
+		baseDomainError: baseDomainError{kind: ErrorKindConflict, message: fmt.Sprintf("TransactionAttachment %s is already linked to a transaction", attachmentID)},
+		AttachmentID:    attachmentID,
+	}
+}
+
+// ObjectStorageUnavailableError means the object store could not be reached or
+// rejected an operation transiently. Its message is deliberately generic (no
+// endpoint, key, or provider detail) because it is returned to clients; the
+// underlying cause is available via Unwrap for boundary logging.
+type ObjectStorageUnavailableError struct {
+	baseDomainError
+	cause error
+}
+
+func NewObjectStorageUnavailableError(cause error) *ObjectStorageUnavailableError {
+	return &ObjectStorageUnavailableError{
+		baseDomainError: baseDomainError{kind: ErrorKindUnavailable, message: "attachment storage is temporarily unavailable"},
+		cause:           cause,
+	}
+}
+
+func (e *ObjectStorageUnavailableError) Unwrap() error { return e.cause }
+
+// AttachmentIntegrityError means the metadata row exists but its bytes could
+// not be read: a missing object with a live row is an integrity fault, not a
+// 404 on the attachment. Kind is internal so the kernel returns 500.
+type AttachmentIntegrityError struct {
+	baseDomainError
+	AttachmentID uuid.UUID
+	cause        error
+}
+
+func NewAttachmentIntegrityError(attachmentID uuid.UUID, cause error) *AttachmentIntegrityError {
+	return &AttachmentIntegrityError{
+		baseDomainError: baseDomainError{kind: ErrorKindInternal, message: fmt.Sprintf("TransactionAttachment %s has no readable object", attachmentID)},
+		AttachmentID:    attachmentID,
+		cause:           cause,
+	}
+}
+
+func (e *AttachmentIntegrityError) Unwrap() error { return e.cause }
+
+// ValidationError is a service-level business-rule failure that the HTTP kernel
+// maps to 400. Domain `Validate()` methods return plain errors; this exists for
+// a rule the domain type cannot express on its own (e.g. a cross-item constraint
+// over a request list).
+type ValidationError struct{ baseDomainError }
+
+func NewValidationError(message string) *ValidationError {
+	return &ValidationError{baseDomainError{kind: ErrorKindValidation, message: message}}
 }

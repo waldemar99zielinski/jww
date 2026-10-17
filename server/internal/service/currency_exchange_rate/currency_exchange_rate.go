@@ -44,15 +44,6 @@ type UpsertCounts struct {
 	Updated  int
 }
 
-type Repository interface {
-	Create(ctx domain.AppContext, exchangeRate domain.CurrencyExchangeRate, uow ...unit_of_work.UnitOfWork) error
-	// UpsertMany writes a whole batch in one statement, replacing rate on a
-	// (from_currency_code, to_currency_code, recorded_at) conflict.
-	UpsertMany(ctx domain.AppContext, rates []domain.CurrencyExchangeRateFlatten, uow ...unit_of_work.UnitOfWork) (UpsertCounts, error)
-	GetByCurrencies(ctx domain.AppContext, from, to domain.Currency, asOf time.Time, uow ...unit_of_work.UnitOfWork) (*domain.CurrencyExchangeRate, error)
-	List(ctx domain.AppContext, uow ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error)
-}
-
 type Service struct {
 	repository Repository
 }
@@ -103,6 +94,11 @@ func (s *Service) GetByCurrencies(ctx domain.AppContext, from, to domain.Currenc
 	return exchangeRate, nil
 }
 
-func (s *Service) List(ctx domain.AppContext, uow ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
-	return s.repository.List(ctx, uow...)
+func (s *Service) List(ctx domain.AppContext, filter *Filter, uow ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
+	if filter != nil {
+		if err := filter.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	return s.repository.List(ctx, filter, uow...)
 }

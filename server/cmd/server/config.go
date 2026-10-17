@@ -3,6 +3,7 @@ package main
 import (
 	"jww/internal/adapter/frankfurter"
 	"jww/internal/adapter/security"
+	"jww/internal/adapter/storage"
 	"jww/internal/infrastructure/database"
 	"jww/internal/infrastructure/http_server"
 	"jww/internal/infrastructure/scheduler"
@@ -19,6 +20,7 @@ type Config struct {
 	Logger      logger.Config
 	Scheduler   scheduler.Config
 	Frankfurter frankfurter.Config
+	Storage     storage.Config
 }
 
 func LoadConfig() (Config, error) {
@@ -46,6 +48,10 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	storageConfig, err := storage.LoadConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		Http:        httpConfig,
 		Database:    databaseConfig,
@@ -53,5 +59,6 @@ func LoadConfig() (Config, error) {
 		Logger:      loggerConfig,
 		Scheduler:   schedulerConfig,
 		Frankfurter: frankfurterConfig,
+		Storage:     storageConfig,
 	}, nil
 }

@@ -47,7 +47,8 @@ func (f *fakeCurrencyRepo) Delete(domain.AppContext, domain.Currency, ...unit_of
 }
 
 type fakeRateRepo struct {
-	rates []domain.CurrencyExchangeRate
+	rates      []domain.CurrencyExchangeRate
+	listFilter *ratesvc.Filter
 }
 
 func (f *fakeRateRepo) Create(_ domain.AppContext, r domain.CurrencyExchangeRate, _ ...unit_of_work.UnitOfWork) error {
@@ -68,7 +69,11 @@ func (f *fakeRateRepo) UpsertMany(domain.AppContext, []domain.CurrencyExchangeRa
 	return ratesvc.UpsertCounts{}, nil
 }
 
-func (f *fakeRateRepo) List(domain.AppContext, ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
+func (f *fakeRateRepo) List(_ domain.AppContext, filter *ratesvc.Filter, _ ...unit_of_work.UnitOfWork) ([]domain.CurrencyExchangeRate, error) {
+	if filter != nil {
+		copy := *filter
+		f.listFilter = &copy
+	}
 	return f.rates, nil
 }
 
@@ -173,18 +178,32 @@ func TestGetExchangeRateHandler(t *testing.T) {
 }
 
 func TestListExchangeRatesHandler(t *testing.T) {
-	r, _, rateRepo := newTestRouter(t)
-	rateRepo.rates = append(rateRepo.rates, domain.CurrencyExchangeRate{
-		FromCurrency: domain.Currency{Code: "USD"}, ToCurrency: domain.Currency{Code: "EUR"},
-		Rate: domain.ExchangeRate(9100), RecordedAt: time.Now(),
+	t.Run("passes query filter", func(t *testing.T) {
+		r, _, rateRepo := newTestRouter(t)
+		rateRepo.rates = append(rateRepo.rates, domain.CurrencyExchangeRate{
+			FromCurrency: domain.Currency{Code: "USD"}, ToCurrency: domain.Currency{Code: "EUR"},
+			Rate: domain.ExchangeRate(9100), RecordedAt: time.Now(),
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/currency-exchange-rates/all?from_currency_code=USD&to_currency_code=EUR&recorded_from=2026-01-01T00:00:00Z", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.NotNil(t, rateRepo.listFilter)
+		assert.Equal(t, "USD", rateRepo.listFilter.FromCurrencyCode)
+		assert.Equal(t, "EUR", rateRepo.listFilter.ToCurrencyCode)
+		assert.NotNil(t, rateRepo.listFilter.RecordedFrom)
+		var resp []schema.CurrencyExchangeRateResponse
+		decodeData(t, rec, &resp)
+		assert.Len(t, resp, 1)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/currency-exchange-rates/all", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var resp []schema.CurrencyExchangeRateResponse
-	decodeData(t, rec, &resp)
-	assert.Len(t, resp, 1)
+	t.Run("invalid recorded timestamp", func(t *testing.T) {
+		r, _, _ := newTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/v1/currency-exchange-rates/all?recorded_from=invalid", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
 }

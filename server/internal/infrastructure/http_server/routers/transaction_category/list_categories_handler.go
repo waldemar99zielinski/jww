@@ -13,20 +13,10 @@ func listCategoriesHandler(deps *kernel.Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appCtx := kernel.RequestContext(r)
 
-		q := r.URL.Query()
-		categoryType := domain.TransactionCategoryType(q.Get("type"))
-		if !categoryType.Valid() {
-			kernel.WriteBadRequest(w, kernel.ErrInvalidType)
+		categoryType, activeOnly, err := categoryListParamsFromRequest(r)
+		if err != nil {
+			kernel.WriteBadRequest(w, err)
 			return
-		}
-		activeOnly := true
-		if v := q.Get("active_only"); v != "" {
-			parsed, err := strconv.ParseBool(v)
-			if err != nil {
-				kernel.WriteBadRequest(w, err)
-				return
-			}
-			activeOnly = parsed
 		}
 
 		categories, err := deps.TransactionCategoryService.ListByType(appCtx, categoryType, activeOnly)
@@ -40,4 +30,22 @@ func listCategoriesHandler(deps *kernel.Deps) http.HandlerFunc {
 		}
 		kernel.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+func categoryListParamsFromRequest(r *http.Request) (domain.TransactionCategoryType, bool, error) {
+	q := r.URL.Query()
+	categoryType := domain.TransactionCategoryType(q.Get("type"))
+	if !categoryType.Valid() {
+		return "", false, kernel.ErrInvalidType
+	}
+
+	activeOnly := true
+	if v := q.Get("active_only"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return "", false, err
+		}
+		activeOnly = parsed
+	}
+	return categoryType, activeOnly, nil
 }
