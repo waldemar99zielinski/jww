@@ -17,6 +17,23 @@ const (
 	maxAttachmentMediaTypeLen  = 255
 )
 
+// mediaTypeByExtension maps a normalized filename extension to a media type,
+// used only when the multipart part carries no usable Content-Type.
+var mediaTypeByExtension = map[string]string{
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".webp": "image/webp",
+	".gif":  "image/gif",
+	".avif": "image/avif",
+	".tif":  "image/tiff",
+	".tiff": "image/tiff",
+	".heic": "image/heic",
+	".heif": "image/heif",
+	".dng":  "image/dng",
+	".pdf":  "application/pdf",
+}
+
 // MultipartFile is the single file part of an attachment upload. It is an
 // io.Reader over the part's bytes; read it through to the end and then call
 // Finish to prove no unexpected extra parts followed before committing.
@@ -53,8 +70,15 @@ func ReadSingleMultipartFile(r *http.Request) (*MultipartFile, error) {
 		return nil, err
 	}
 	mediaType := strings.TrimSpace(part.Header.Get("Content-Type"))
-	if mediaType == "" {
-		mediaType = defaultAttachmentMediaType
+	// Browsers (notably iOS uploading a DNG from the Files app) often send an
+	// empty or generic type. Fall back to the filename extension so photos are
+	// classified as images instead of application/octet-stream.
+	if mediaType == "" || mediaType == defaultAttachmentMediaType {
+		if inferred, ok := mediaTypeByExtension[strings.ToLower(path.Ext(filename))]; ok {
+			mediaType = inferred
+		} else if mediaType == "" {
+			mediaType = defaultAttachmentMediaType
+		}
 	}
 	if len(mediaType) > maxAttachmentMediaTypeLen {
 		return nil, errors.New("multipart file part media type is too long")

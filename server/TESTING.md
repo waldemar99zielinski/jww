@@ -114,7 +114,7 @@ test.
 ### `internal/adapter/security` — unit, no I/O
 
 `Argon2PasswordHasher`: hash/verify round-trip, wrong password rejected, hash
-format sanity. `JwtTokenService`: sign/verify round-trip, expired token
+format sanity. `jwt.AccessTokenService`: sign/verify round-trip, expired token
 rejected, wrong secret rejected, `LoadConfig`'s "bad `JWT_ALGORITHM` fails at
 startup" behavior (already fixed in code, needs a test). All fast, no
 containers.
@@ -181,7 +181,7 @@ Build tag at the top of every file in this set:
 middleware — test with `httptest.NewRequest`/`httptest.NewRecorder` and no
 services at all. `RequireAuth` is the one piece that needs a real
 `*auth.Service` (concrete struct, same issue as workflows) — build one wired
-to a fake `user.Repository` and a real `security.JwtTokenService` with a
+to a fake `user.Repository` and a real `jwt.AccessTokenService` with a
 throwaway secret, then assert missing/malformed/expired/valid tokens all
 behave correctly. `bearerToken`/`ensureFlowID`/`RequestContext` are pure
 functions already easy to unit test directly (white-box, same package).

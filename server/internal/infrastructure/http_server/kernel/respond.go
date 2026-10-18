@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 
 	"jww/internal/domain"
@@ -108,7 +107,8 @@ func WriteValidationError(w http.ResponseWriter, message string, details ...Fiel
 // WriteError translates a service/domain-layer error into the standard HTTP
 // error response — the one place allowed to know both "net/http" and
 // "domain.DomainError" exist.
-func WriteError(w http.ResponseWriter, err error) {
+func WriteError(w http.ResponseWriter, r *http.Request, err error) {
+	recordRequestError(r, err)
 	var domainErr domain.DomainError
 	if errors.As(err, &domainErr) {
 		if domainErr.Kind() == domain.ErrorKindUnauthorized {
@@ -118,7 +118,6 @@ func WriteError(w http.ResponseWriter, err error) {
 		writeError(w, status, code, err.Error(), nil)
 		return
 	}
-	httpLog.Slog().Error("internal error", slog.String("error", err.Error()))
 	writeError(w, http.StatusInternalServerError, CodeInternal, "internal server error", nil)
 }
 

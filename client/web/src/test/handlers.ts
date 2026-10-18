@@ -1,7 +1,9 @@
 import { http, HttpResponse } from 'msw'
 import {
+  fixtureAttachment,
   fixtureCategories,
   fixtureCurrencies,
+  fixturePrefill,
   fixtureSummary,
   fixtureTokenResponse,
   fixtureTransactions,
@@ -72,6 +74,37 @@ export const handlers = [
     })
     return HttpResponse.json({ data: filtered })
   }),
+  http.get('*/api/v1/transactions/:id', ({ params }) => {
+    const transaction = fixtureTransactions.find((t) => t.id === Number(params.id))
+    if (!transaction) return new HttpResponse(null, { status: 404 })
+    // GET /transactions/{id} is the only response that mints preview grants (for previewable media).
+    const attachments = transaction.attachments.map((attachment) => ({
+      ...attachment,
+      preview_grant:
+        attachment.media_type.startsWith('image/') || attachment.media_type === 'application/pdf'
+          ? `grant-${attachment.id}`
+          : null,
+    }))
+    return HttpResponse.json({ data: { ...transaction, attachments } })
+  }),
+  // PATCH mirrors GET's detail shape (preview grants included) and echoes the merged body.
+  http.patch('*/api/v1/transactions/:id', async ({ request, params }) => {
+    const transaction = fixtureTransactions.find((t) => t.id === Number(params.id))
+    if (!transaction) return new HttpResponse(null, { status: 404 })
+    const body = (await request.json()) as Record<string, unknown>
+    const updated = { ...transaction, ...body }
+    const attachments = updated.attachments.map((attachment) => ({
+      ...attachment,
+      preview_grant:
+        attachment.media_type.startsWith('image/') || attachment.media_type === 'application/pdf'
+          ? `grant-${attachment.id}`
+          : null,
+    }))
+    return HttpResponse.json({ data: { ...updated, attachments } })
+  }),
+  http.get('*/api/v1/transactions/:id/attachments/:attachmentID/download', () => new HttpResponse(new Blob(['bytes']), { status: 200 })),
+  http.delete('*/api/v1/transactions/:id/attachments/:attachmentID', () => new HttpResponse(null, { status: 204 })),
+  http.get('*/api/v1/attachment-content', () => new HttpResponse(new Blob(['preview']), { status: 200 })),
   http.post('*/api/v1/transactions', async ({ request }) => {
     const body = (await request.json()) as {
       type: string
@@ -82,6 +115,7 @@ export const handlers = [
       source: string
       name: string
       description?: string
+      created_at?: string
     }
     const category = fixtureCategories.find((c) => c.id === body.category_id)
     return HttpResponse.json({
@@ -95,11 +129,17 @@ export const handlers = [
         user_id: body.user_id,
         source: body.source,
         name: body.name,
-        created_at: new Date(0).toISOString(),
+        created_at: body.created_at ?? new Date(0).toISOString(),
         description: body.description ?? '',
       },
     })
   }),
 
   http.get('*/api/v1/summary', () => HttpResponse.json({ data: fixtureSummary })),
+
+  http.post('*/api/v1/transaction-attachments', () => HttpResponse.json({ data: fixtureAttachment }, { status: 201 })),
+  http.delete('*/api/v1/transaction-attachments/:attachmentID', () => new HttpResponse(null, { status: 204 })),
+  http.post('*/api/v1/transaction-attachments/:attachmentID/extraction', ({ params }) =>
+    HttpResponse.json({ data: { ...fixturePrefill, attachment_id: String(params.attachmentID) } }, { status: 201 }),
+  ),
 ]

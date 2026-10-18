@@ -182,7 +182,7 @@ func TestNestedAttachmentDownloadAndDeleteRequireParentMatch(t *testing.T) {
 		method string
 		path   string
 	}{
-		{http.MethodGet, base + "/content"},
+		{http.MethodGet, base + "/download"},
 		{http.MethodDelete, base},
 	} {
 		rec := httptest.NewRecorder()
@@ -202,7 +202,7 @@ func TestNestedAttachmentDownloadAndDeleteHappyPath(t *testing.T) {
 	decodeData(t, rec, &uploaded)
 
 	dl := httptest.NewRecorder()
-	r.ServeHTTP(dl, httptest.NewRequest(http.MethodGet, "/v1/transactions/"+itoa(txID)+"/attachments/"+uploaded.ID.String()+"/content", nil))
+	r.ServeHTTP(dl, httptest.NewRequest(http.MethodGet, "/v1/transactions/"+itoa(txID)+"/attachments/"+uploaded.ID.String()+"/download", nil))
 	require.Equal(t, http.StatusOK, dl.Code)
 	assert.Equal(t, "pdf-bytes", dl.Body.String())
 

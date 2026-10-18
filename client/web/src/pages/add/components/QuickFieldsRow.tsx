@@ -5,8 +5,8 @@ export interface QuickFieldsRowProps {
   dateLabel: string
   dateOpen: boolean
   onToggleDate: () => void
-  hasReceipt: boolean
-  onOpenReceipt: () => void
+  hasAttachment: boolean
+  onOpenAttachment: () => void
 }
 
 function chipClass(active: boolean) {
@@ -15,16 +15,16 @@ function chipClass(active: boolean) {
   }`
 }
 
-export function QuickFieldsRow({ dateLabel, dateOpen, onToggleDate, hasReceipt, onOpenReceipt }: QuickFieldsRowProps) {
+export function QuickFieldsRow({ dateLabel, dateOpen, onToggleDate, hasAttachment, onOpenAttachment }: QuickFieldsRowProps) {
   return (
     <div className="flex gap-2.5">
       <Button variant="custom" onClick={onToggleDate} className={chipClass(dateOpen)}>
         <IconCalendar className="h-4 w-4 flex-none" />
         <span className="truncate">{dateLabel}</span>
       </Button>
-      <Button variant="custom" onClick={onOpenReceipt} className={chipClass(hasReceipt)}>
+      <Button variant="custom" onClick={onOpenAttachment} className={chipClass(hasAttachment)}>
         <IconPaperclip className="h-4 w-4 flex-none" />
-        <span className="truncate">{hasReceipt ? 'Attached' : 'Attach'}</span>
+        <span className="truncate">{hasAttachment ? 'Attached' : 'Attach'}</span>
       </Button>
     </div>
   )

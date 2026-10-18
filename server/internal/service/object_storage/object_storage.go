@@ -44,12 +44,22 @@ type Stream struct {
 	ByteSize int64
 }
 
+// ByteRange is an inclusive byte range. Callers validate it against the
+// object's total size before passing it to Store.OpenRange.
+type ByteRange struct {
+	Start int64
+	End   int64
+}
+
+func (r ByteRange) Length() int64 { return r.End - r.Start + 1 }
+
 // Store is the outbound object-storage port. Implementations live in
 // internal/adapter/*; no provider SDK type crosses this boundary. Delete must
 // be idempotent when the object (or version) is already absent.
 type Store interface {
 	Put(ctx domain.AppContext, ref Ref, body io.Reader, mediaType string) (Stored, error)
 	Open(ctx domain.AppContext, ref Ref) (Stream, error)
+	OpenRange(ctx domain.AppContext, ref Ref, byteRange ByteRange) (Stream, error)
 	Delete(ctx domain.AppContext, ref Ref) error
 }
 
@@ -83,6 +93,11 @@ func (n namespacedStore) Put(ctx domain.AppContext, ref Ref, body io.Reader, med
 func (n namespacedStore) Open(ctx domain.AppContext, ref Ref) (Stream, error) {
 	ref.Key = n.prefix + ref.Key
 	return n.store.Open(ctx, ref)
+}
+
+func (n namespacedStore) OpenRange(ctx domain.AppContext, ref Ref, byteRange ByteRange) (Stream, error) {
+	ref.Key = n.prefix + ref.Key
+	return n.store.OpenRange(ctx, ref, byteRange)
 }
 
 func (n namespacedStore) Delete(ctx domain.AppContext, ref Ref) error {

@@ -73,6 +73,21 @@ func TestS3Store_RoundTrip(t *testing.T) {
 	assert.Equal(t, payload, got)
 }
 
+func TestS3Store_OpenRange(t *testing.T) {
+	s := newStore(t)
+	k := key()
+	stored, err := s.Put(appCtx, object_storage.Ref{Key: k}, bytes.NewReader([]byte("0123456789")), "text/plain")
+	require.NoError(t, err)
+
+	stream, err := s.OpenRange(appCtx, object_storage.Ref{Key: k, Version: stored.Version}, object_storage.ByteRange{Start: 2, End: 5})
+	require.NoError(t, err)
+	defer stream.Body.Close()
+	got, err := io.ReadAll(stream.Body)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("2345"), got)
+	assert.Equal(t, int64(4), stream.ByteSize)
+}
+
 func TestS3Store_ZeroByteObject(t *testing.T) {
 	s := newStore(t)
 	k := key()

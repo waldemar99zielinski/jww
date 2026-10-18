@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/google/uuid"
@@ -51,9 +52,19 @@ func TestAttachmentJourney(t *testing.T) {
 	assert.Nil(t, got.Data.TransactionID)
 	assert.Equal(t, int64(len(draftBytes)), got.Data.ByteSize)
 
-	status, body, _ := apiClient.Download(t, "/api/v1/transaction-attachments/"+draftID.String()+"/content", token)
+	status, body, _ := apiClient.Download(t, "/api/v1/transaction-attachments/"+draftID.String()+"/download", token)
 	require.Equal(t, http.StatusOK, status)
 	assert.Equal(t, draftBytes, body)
+
+	var grant utils.Envelope[schema.TransactionAttachmentGrantResponse]
+	status = apiClient.Do(t, http.MethodPost, "/api/v1/transaction-attachments/"+draftID.String()+"/grants", token,
+		schema.TransactionAttachmentGrantRequest{Purpose: "preview"}, &grant)
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, grant.Data.Grant)
+	status, body, headers := apiClient.Download(t, "/api/v1/attachment-content?grant="+url.QueryEscape(grant.Data.Grant), "")
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, draftBytes, body)
+	assert.Contains(t, headers.Get("Content-Disposition"), "inline;")
 
 	// 3. Create a transaction that links the draft atomically.
 	var txResp utils.Envelope[schema.TransactionResponse]
@@ -72,6 +83,15 @@ func TestAttachmentJourney(t *testing.T) {
 	require.Len(t, txResp.Data.Attachments, 1)
 	require.NotNil(t, txResp.Data.Attachments[0].TransactionID)
 	assert.Equal(t, txID, *txResp.Data.Attachments[0].TransactionID)
+
+	var details utils.Envelope[schema.TransactionDetailsResponse]
+	status = apiClient.Do(t, http.MethodGet, fmt.Sprintf("/api/v1/transactions/%d", txID), token, nil, &details)
+	require.Equal(t, http.StatusOK, status)
+	require.Len(t, details.Data.Attachments, 1)
+	require.NotNil(t, details.Data.Attachments[0].PreviewGrant)
+	status, body, _ = apiClient.Download(t, "/api/v1/attachment-content?grant="+url.QueryEscape(*details.Data.Attachments[0].PreviewGrant), "")
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, draftBytes, body)
 
 	// 4. Standalone access to the now-linked attachment is closed.
 	status = apiClient.Do(t, http.MethodGet, "/api/v1/transaction-attachments/"+draftID.String(), token, nil, &utils.Envelope[struct{}]{})
@@ -102,7 +122,7 @@ func TestAttachmentJourney(t *testing.T) {
 	assert.Equal(t, txID, *direct.Data.TransactionID)
 
 	// 8. Nested download returns the exact bytes.
-	status, body, _ = apiClient.Download(t, fmt.Sprintf("/api/v1/transactions/%d/attachments/%s/content", txID, direct.Data.ID), token)
+	status, body, _ = apiClient.Download(t, fmt.Sprintf("/api/v1/transactions/%d/attachments/%s/download", txID, direct.Data.ID), token)
 	require.Equal(t, http.StatusOK, status)
 	assert.Equal(t, []byte("png"), body)
 

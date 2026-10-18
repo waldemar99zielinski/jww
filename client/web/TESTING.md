@@ -218,8 +218,9 @@ phrased as "can a user actually do X":
    show an error and keep them on the login screen; an unauthenticated visit to a protected route
    redirects to login.
 2. **Can a user list/view their transactions?** — after seeding a known set of transactions for
-   the test user, the transactions page lists them with the right amounts/categories/dates, and
-   basic filtering (e.g. by category or date range) narrows the list correctly.
+   the test user, the transactions page lists them with the right amounts/categories/dates,
+   basic filtering (e.g. by category or date range) narrows the list correctly, and opening a
+   transaction shows that record's full details on the detail screen.
 3. **Can a user add a transaction?** — fill the form, submit, see it appear in the transaction
    list and reflected in the home summary (proves the full round trip: auth header, persistence,
    cache invalidation, rendering).
@@ -252,6 +253,8 @@ release that touches the PWA layer. Each row is a five-minute check; record the 
 | Platform | Check | Pass condition |
 |---|---|---|
 | Android Chrome | Open the preview build over HTTPS (or a LAN tunnel), use the app ~30 s, open Settings | "Install app" appears; the dialog shows the wallet icon and "Joint Wallet Watch"; the installed launcher icon is not letterboxed into a white circle |
+| Any desktop browser | Open the preview build and look at the tab, then switch the browser between light and dark themes | The tab shows a wallet with a coin above it — no letters — and at 16 px the coin still reads as a separate shape from the wallet. In dark chrome the tile is dark, matching the window |
+| Any target | DevTools → Application → Manifest → tick "Show only the minimum safe area for maskable icons" | The whole wallet mark stays inside the circle, with visible margin on every side |
 | Android Chrome (installed) | Launch from the launcher with airplane mode on | The app opens and shows the offline screen — no browser error page, no blank screen |
 | iOS Safari | Settings → Install app | The sheet's steps match what the OS actually shows, including the "Open as Web App" toggle |
 | iOS (installed) | Launch from the home screen; then airplane mode and relaunch | No Safari chrome; content not clipped under the status bar; the offline screen appears |

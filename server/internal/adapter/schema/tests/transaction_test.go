@@ -49,6 +49,15 @@ func TestTransactionCreateRequest_Validate(t *testing.T) {
 		{"optional attachment ids accepted", func(r *schema.TransactionCreateRequest) {
 			r.AttachmentIDs = []uuid.UUID{uuid.New()}
 		}, false},
+		{"absent created_at accepted", func(r *schema.TransactionCreateRequest) { r.CreatedAt = nil }, false},
+		{"explicit created_at accepted", func(r *schema.TransactionCreateRequest) {
+			when := time.Date(2024, 3, 15, 12, 30, 0, 0, time.UTC)
+			r.CreatedAt = &when
+		}, false},
+		{"zero created_at rejected", func(r *schema.TransactionCreateRequest) {
+			zero := time.Time{}
+			r.CreatedAt = &zero
+		}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,6 +71,59 @@ func TestTransactionCreateRequest_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ptr returns a pointer to v, for building optional request fields.
+func ptr[T any](v T) *T { return &v }
+
+func TestTransactionUpdateRequest_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     schema.TransactionUpdateRequest
+		wantErr bool
+	}{
+		{"empty patch is valid", schema.TransactionUpdateRequest{}, false},
+		{"valid type", schema.TransactionUpdateRequest{Type: ptr(domain.TransactionTypeIncome)}, false},
+		{"invalid type", schema.TransactionUpdateRequest{Type: ptr(domain.TransactionType("bogus"))}, true},
+		{"valid amount", schema.TransactionUpdateRequest{Amount: ptr(domain.Money(1))}, false},
+		{"zero amount", schema.TransactionUpdateRequest{Amount: ptr(domain.Money(0))}, true},
+		{"negative amount", schema.TransactionUpdateRequest{Amount: ptr(domain.Money(-5))}, true},
+		{"invalid source", schema.TransactionUpdateRequest{Source: ptr(domain.TransactionSource("bogus"))}, true},
+		{"currency too short", schema.TransactionUpdateRequest{CurrencyCode: ptr("US")}, true},
+		{"currency ok", schema.TransactionUpdateRequest{CurrencyCode: ptr("USD")}, false},
+		{"blank name", schema.TransactionUpdateRequest{Name: ptr("")}, true},
+		{"name ok", schema.TransactionUpdateRequest{Name: ptr("Rent")}, false},
+		{"empty description allowed", schema.TransactionUpdateRequest{Description: ptr("")}, false},
+		{"valid created_at", schema.TransactionUpdateRequest{CreatedAt: ptr(time.Date(2024, 3, 15, 12, 30, 0, 0, time.UTC))}, false},
+		{"zero created_at", schema.TransactionUpdateRequest{CreatedAt: ptr(time.Time{})}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.req.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestTransactionUpdateRequest_JSONPresence proves absent, null, and present
+// fields are distinguished: only present, non-null fields become non-nil.
+func TestTransactionUpdateRequest_JSONPresence(t *testing.T) {
+	var req schema.TransactionUpdateRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"amount":"12.34","description":"","category_id":null,"created_at":"2024-03-15T12:30:00Z"}`), &req))
+
+	require.NotNil(t, req.Amount)
+	assert.Equal(t, domain.Money(1234), *req.Amount, "a quoted decimal must parse as money")
+	require.NotNil(t, req.Description)
+	assert.Equal(t, "", *req.Description, "an explicit empty string is a real value")
+	require.NotNil(t, req.CreatedAt)
+	assert.True(t, time.Date(2024, 3, 15, 12, 30, 0, 0, time.UTC).Equal(*req.CreatedAt))
+	assert.Nil(t, req.CategoryID, "explicit null means unchanged")
+	assert.Nil(t, req.Name, "an absent field means unchanged")
+	assert.Nil(t, req.Type)
 }
 
 func TestTransactionToResponse(t *testing.T) {

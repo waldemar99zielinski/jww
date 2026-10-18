@@ -7,7 +7,7 @@
 - [`gateway/`](gateway/README.md) — Postgres repositories (pgx + Squirrel).
 - [`storage/`](storage/README.md) — private S3-compatible object storage (AWS SDK v2) implementing the shared `object_storage.Store` port.
 - [`schema/`](schema/README.md) — HTTP request/response JSON shapes + validation.
-- [`security/`](security/README.md) — Argon2 password hasher, JWT token service, `security.Config`.
+- [`security/`](security/README.md) — Argon2 password hashing plus the dedicated [`security/jwt`](security/jwt/README.md) package for JWT config and purpose-specific tokens.
 - [`frankfurter/`](frankfurter/README.md) — exchange-rate provider client (`currency_exchange_rate.RateSource` over `net/http`).
 
 ## Rules

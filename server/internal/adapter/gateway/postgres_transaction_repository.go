@@ -156,9 +156,10 @@ func (r *PostgresTransactionRepository) List(ctx domain.AppContext, filter *tran
 		}
 	}
 
-	// The default timeline is newest-first. ID makes rows with an identical
-	// timestamp deterministic (and matches insertion order for BIGSERIAL ids).
-	sql, args, err := builder.OrderBy("t.created_at DESC", "t.id DESC").ToSql()
+	// The default timeline is newest-first by id. The id is a BIGSERIAL
+	// identity, so a descending id is insertion order (most recently created
+	// row first) regardless of any configured created_at value.
+	sql, args, err := builder.OrderBy("t.id DESC").ToSql()
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +198,7 @@ func (r *PostgresTransactionRepository) Update(ctx domain.AppContext, tr domain.
 		Set("source", string(tr.Source)).
 		Set("name", tr.Name).
 		Set("description", tr.Description).
+		Set("created_at", tr.CreatedAt).
 		Where("id = ?", tr.ID).
 		ToSql()
 	if err != nil {

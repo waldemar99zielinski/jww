@@ -12,7 +12,7 @@ export function AppShell() {
       <div className="flex h-screen overflow-hidden bg-paper text-ink">
         <DesignModeBadge />
         <SidebarNav />
-        <main className="no-scrollbar min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <main data-scroll-lock className="no-scrollbar min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="mx-auto w-full max-w-5xl px-10 py-10">
             <Outlet />
           </div>

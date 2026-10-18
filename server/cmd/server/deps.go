@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,6 +11,7 @@ import (
 	"jww/internal/adapter/frankfurter"
 	"jww/internal/adapter/gateway"
 	"jww/internal/adapter/security"
+	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/adapter/storage"
 	"jww/internal/domain"
 	"jww/internal/infrastructure/database"
@@ -33,7 +35,7 @@ import (
 func buildDeps(
 	ctx context.Context,
 	pool *pgxpool.Pool,
-	authConfig security.Config,
+	jwtConfig jwtadapter.Config,
 	frankfurterConfig frankfurter.Config,
 	storageConfig storage.Config,
 	corsOrigins []string,
@@ -41,7 +43,8 @@ func buildDeps(
 ) (*kernel.Deps, error) {
 	uowManager := database.NewPostgresUnitOfWorkManager(pool)
 	passwordHasher := security.NewArgon2PasswordHasher()
-	tokenService := security.NewJwtTokenService(authConfig)
+	tokenService := jwtadapter.NewAccessTokenService(jwtConfig)
+	attachmentGrantService := jwtadapter.NewAttachmentGrantService(jwtConfig, 5*time.Minute)
 	rateSource := frankfurter.NewClient(frankfurterConfig)
 
 	userRepo := gateway.NewPostgresUserRepository(pool)
@@ -63,7 +66,7 @@ func buildDeps(
 	categoryService := transaction_category.NewService(categoryRepo, uowManager)
 	transactionService := transaction.NewService(transactionRepo, uowManager)
 	attachmentStore := object_storage.Namespaced(objectStore, object_storage.StorageTransactionAttachmentsNamespace)
-	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStore, reportOrphanedObject)
+	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStore, reportOrphanedObject, attachmentGrantService)
 
 	return &kernel.Deps{
 		AuthService:                  authService,

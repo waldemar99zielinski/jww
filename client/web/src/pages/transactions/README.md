@@ -4,8 +4,13 @@ Transaction history with filtering (type/user/category/name/date range). Standar
 container/view structure (see `pages/README.md`); `index.tsx` owns every filter as its own
 `useState` field and passes applied values + setters down.
 
+Each row links to the read-only detail screen at `detail/` (`/transactions/:id`) via
+`TransactionRow`'s optional `to` prop.
+
 ## Files
 
+- `detail/` — the single-transaction detail screen (own container/view pair + README). Reached by
+  clicking a row here; it is a separate route, not a modal.
 - `components/TransactionFiltersDropdown.tsx` — the filter popover/bottom-sheet. Holds its own
   **draft** filter state separate from the page's **applied** filter state passed in via props,
   so edits don't apply until "Apply" is pressed (or the popover closes).
@@ -24,6 +29,12 @@ container/view structure (see `pages/README.md`); `index.tsx` owns every filter 
 
 - Filter values map 1:1 to `api/transactions.ts`'s `TransactionFilters` — if you add a new
   filterable field, add it in both places (plus `api/mock/data.ts`'s mock filtering).
+- There is **no user filter by default**: `user_id` is only sent when the user picks one in the
+  filter panel (otherwise the request is unfiltered and the server returns every user's rows).
+  `useTransactions` therefore no longer requires `user_id` to fetch.
+- Rows render in the **exact order the server returns them** (server is newest-first by id). The
+  page only buckets that stream into day sections as it arrives — it never re-sorts or reverses,
+  so changing server order changes the UI.
 
 ## Testing
 

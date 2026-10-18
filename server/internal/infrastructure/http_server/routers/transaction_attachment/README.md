@@ -1,25 +1,30 @@
 # routers/transaction_attachment
 
-**Role.** The standalone attachment resource: upload, get, download, and delete for **unattached drafts** (protected only). Every ID operation requires `transaction_id IS NULL`, so a linked attachment is a 404 here and must be reached through its transaction.
+**Role.** The standalone attachment resource: upload, get, download, grant issuance, and delete for **unattached drafts**. Every draft ID operation requires `transaction_id IS NULL`, so a linked attachment is a 404 here and must be reached through its transaction. It also owns the public, grant-authenticated content proxy.
 
-## Routes (all `protected`)
+## Routes
 
-| Method | Path | Handler |
-|---|---|---|
-| POST | `/v1/transaction-attachments` | `uploadDraftHandler` |
-| GET | `/v1/transaction-attachments/{attachmentID}` | `getDraftHandler` |
-| GET | `/v1/transaction-attachments/{attachmentID}/content` | `downloadDraftHandler` |
-| DELETE | `/v1/transaction-attachments/{attachmentID}` | `deleteDraftHandler` |
+| Access | Method | Path | Handler |
+|---|---|---|---|
+| protected | POST | `/v1/transaction-attachments` | `uploadDraftHandler` |
+| protected | GET | `/v1/transaction-attachments/{attachmentID}` | `getDraftHandler` |
+| protected | GET | `/v1/transaction-attachments/{attachmentID}/download` | `downloadDraftHandler` |
+| protected | POST | `/v1/transaction-attachments/{attachmentID}/grants` | `issueDraftGrantHandler` |
+| protected | DELETE | `/v1/transaction-attachments/{attachmentID}` | `deleteDraftHandler` |
+| grant | GET | `/v1/attachment-content?grant=...` | `grantedContentHandler` |
 
-`Mount(_, protected, deps)`. The nested, transaction-scoped attachment routes live in the sibling
+The public route `GET /v1/attachment-content?grant=...` validates the short-lived grant and proxies the exact object version with inline or attachment disposition. It supports one byte range and returns `206`/`416` as appropriate.
+
+`Mount(public, protected, deps)`. The nested, transaction-scoped attachment routes live in the sibling
 [`transaction`](../transaction/README.md) router instead.
 
 ## Notes
 
-- Attachment IDs are UUIDs: parse with `uuid.Parse(chi.URLParam(r, "attachmentID"))`.
+- Attachment IDs use `httputils.ParseUUIDPathParam`.
 - Upload is **streaming multipart/form-data** via `kernel.ReadSingleMultipartFile`: exactly one file part named `file`. `Finish()` is called after the bytes are stored to prove no extra part followed; because the bytes are already written, a `Finish()` failure compensates by deleting the just-created draft before returning `400`.
 - Upload clears the inherited read deadline (`http.NewResponseController(w).SetReadDeadline(time.Time{})`) after auth/validation; download clears the write deadline before streaming.
 - Download is the one documented exception to the JSON envelope: bytes on success, JSON errors only before streaming (`kernel.WriteDownload`).
+- Grant issuance accepts `{"purpose":"preview"}` or `{"purpose":"download"}` and returns the grant token, not a URL. Preview grants are limited to safe raster image and PDF media types. Granted responses are private/no-store and never expose the S3-compatible endpoint or key.
 - The route is exempt from the global body cap; see `kernel.LimitRequestBody`.
 
 ## Testing requirement for this directory

@@ -43,7 +43,7 @@ func TestTransactionWorkflow_Create_WithAttachments(t *testing.T) {
 	t.Run("missing attachment rolls back before inserting the transaction", func(t *testing.T) {
 		f := expenseFixture()
 		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD",
-			uuid.New(), uuid.New(), domain.TransactionSourceManual, "Shop", "", []uuid.UUID{uuid.New()})
+			uuid.New(), uuid.New(), domain.TransactionSourceManual, "Shop", "", nil, []uuid.UUID{uuid.New()})
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -67,7 +67,7 @@ func TestTransactionWorkflow_CreateAndLink(t *testing.T) {
 		f.attachmentRepo.byID[attachment.ID] = attachment
 
 		created, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD",
-			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", []uuid.UUID{attachment.ID})
+			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", nil, []uuid.UUID{attachment.ID})
 
 		require.NoError(t, err)
 		require.Len(t, created.Attachments, 1)
@@ -80,7 +80,7 @@ func TestTransactionWorkflow_CreateAndLink(t *testing.T) {
 	t.Run("without attachment ids the response carries an empty, non-nil slice", func(t *testing.T) {
 		f := newFixture()
 		created, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD",
-			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", nil)
+			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", nil, nil)
 
 		require.NoError(t, err)
 		assert.NotNil(t, created.Attachments)
@@ -90,7 +90,7 @@ func TestTransactionWorkflow_CreateAndLink(t *testing.T) {
 	t.Run("missing draft is not found and nothing is inserted", func(t *testing.T) {
 		f := newFixture()
 		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD",
-			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", []uuid.UUID{uuid.New()})
+			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", nil, []uuid.UUID{uuid.New()})
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -104,7 +104,7 @@ func TestTransactionWorkflow_CreateAndLink(t *testing.T) {
 		f.attachmentRepo.byID[attachment.ID] = attachment
 
 		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD",
-			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", []uuid.UUID{attachment.ID})
+			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", nil, []uuid.UUID{attachment.ID})
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -117,7 +117,7 @@ func TestTransactionWorkflow_CreateAndLink(t *testing.T) {
 		f.attachmentRepo.byID[attachment.ID] = attachment
 
 		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD",
-			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", []uuid.UUID{attachment.ID, attachment.ID})
+			category.ID, user.ID, domain.TransactionSourceManual, "Shop", "", nil, []uuid.UUID{attachment.ID, attachment.ID})
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)

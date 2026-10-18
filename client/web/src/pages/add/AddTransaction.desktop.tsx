@@ -4,13 +4,13 @@ import { IconButton } from '@/components/ui/IconButton'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { TextInput } from '@/components/ui/TextInput'
-import { toCategoryOptions } from './categoryOptions'
-import { AmountHero } from './components/AmountHero'
-import { DateTimeFields } from './components/DateTimeFields'
-import { MoreOptionsPanel } from './components/MoreOptionsPanel'
+import { AmountHero } from '@/components/AmountHero'
+import { toCategoryOptions } from '@/components/categoryOptions'
+import { DateTimeFields } from '@/components/DateTimeFields'
+import { MoreOptionsPanel } from '@/components/MoreOptionsPanel'
 import { QuickFieldsRow } from './components/QuickFieldsRow'
-import { ReceiptBanner } from './components/ReceiptBanner'
-import { ReceiptPicker } from './components/ReceiptPicker'
+import { TransactionAttachmentBanner } from './components/TransactionAttachmentBanner'
+import { TransactionAttachmentPicker } from './components/TransactionAttachmentPicker'
 import type { AddTransactionViewProps } from './types'
 
 const typeOptions = [
@@ -42,12 +42,12 @@ export default function AddTransactionDesktop({
   dateLabel,
   dateOpen,
   onToggleDate,
-  receipt,
-  receiptPickerOpen,
-  onOpenReceipt,
-  onCloseReceipt,
-  onPickReceipt,
-  onRemoveReceipt,
+  attachments,
+  attachmentPickerOpen,
+  onOpenAttachment,
+  onCloseAttachment,
+  onPickAttachment,
+  onRemoveAttachment,
   users,
   userId,
   onUserChange,
@@ -67,7 +67,7 @@ export default function AddTransactionDesktop({
         <div className="flex items-center gap-2">
           <IconButton
             aria-label="Add attachment"
-            onClick={onOpenReceipt}
+            onClick={onOpenAttachment}
             icon={<IconPaperclip className="h-4 w-4" />}
             className="h-9 w-9"
           />
@@ -75,7 +75,13 @@ export default function AddTransactionDesktop({
         </div>
       </div>
 
-      {receipt && <ReceiptBanner receipt={receipt} onRemove={onRemoveReceipt} />}
+      {attachments.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {attachments.map((a) => (
+            <TransactionAttachmentBanner key={a.id} attachment={a} onRemove={() => onRemoveAttachment(a.id)} />
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-8">
         <div className="flex flex-col gap-5">
@@ -118,8 +124,8 @@ export default function AddTransactionDesktop({
             dateLabel={dateLabel}
             dateOpen={dateOpen}
             onToggleDate={onToggleDate}
-            hasReceipt={receipt !== null}
-            onOpenReceipt={onOpenReceipt}
+            hasAttachment={attachments.length > 0}
+            onOpenAttachment={onOpenAttachment}
           />
 
           {dateOpen && (
@@ -157,11 +163,8 @@ export default function AddTransactionDesktop({
         {saving ? 'Saving…' : 'Save transaction'}
       </Button>
       {saveError && <p className="m-0 text-center text-[11.5px] text-critical">Couldn't save — try again.</p>}
-      <p className="m-0 text-center text-[11.5px] leading-relaxed text-muted">
-        Photo attachments are previews — only the core transaction is saved today.
-      </p>
 
-      <ReceiptPicker open={receiptPickerOpen} onClose={onCloseReceipt} onFile={onPickReceipt} />
+      <TransactionAttachmentPicker open={attachmentPickerOpen} onClose={onCloseAttachment} onFile={onPickAttachment} />
     </div>
   )
 }

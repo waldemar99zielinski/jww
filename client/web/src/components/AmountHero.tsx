@@ -2,6 +2,7 @@ import type { CurrencyDto } from '@/api/types'
 import { IconChevronDown } from '@/components/icons'
 import { InlineSelect } from '@/components/ui/InlineSelect'
 import { TextInput } from '@/components/ui/TextInput'
+import { normalizeAmountInput, sanitizeAmountInput } from '@/lib/amount'
 
 export interface AmountHeroProps {
   amount: string
@@ -47,7 +48,12 @@ export function AmountHero({
       type="text"
       inputMode="decimal"
       value={amount}
-      onChange={(e) => onAmountChange(e.target.value.replace(/[^0-9,.]/g, ''))}
+      onChange={(e) => onAmountChange(sanitizeAmountInput(e.target.value))}
+      onBlur={() => {
+        // Pad to two decimals once the user is done, e.g. "5,5" -> "5,50".
+        const normalized = normalizeAmountInput(amount)
+        if (normalized !== amount) onAmountChange(normalized)
+      }}
       placeholder="0,00"
       aria-label="Amount"
       autoFocus

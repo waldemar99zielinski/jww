@@ -7,9 +7,9 @@
 ## Files
 
 - `object_storage.go` —
-  - `Store` — `Put(ctx, Ref, body io.Reader, mediaType) (Stored, error)`, `Open(ctx, Ref) (Stream, error)`, `Delete(ctx, Ref) error` (idempotent if absent).
+  - `Store` — `Put(ctx, Ref, body io.Reader, mediaType) (Stored, error)`, `Open(ctx, Ref) (Stream, error)`, `OpenRange(ctx, Ref, ByteRange) (Stream, error)`, `Delete(ctx, Ref) error` (idempotent if absent).
   - `Ref{Key, Version}` — `Key` is a caller-defined, opaque path; the base `Store` adds no namespace of its own. `Version` is empty for a Put and the exact stored version for an Open/Delete.
-  - `Stored{Version, ETag}`, `Stream{Body, ByteSize}`.
+  - `Stored{Version, ETag}`, `Stream{Body, ByteSize}`, and inclusive `ByteRange{Start, End}`.
   - `ErrNotFound` — the wrapped sentinel an implementation returns for a missing object.
   - `Namespaced(store, folder) Store` — a decorator that scopes every key under `"<folder>/"`, so independent purposes share one underlying store/bucket while keeping their objects in separate folders. This is the mechanism for distinguishing purposes (each defines a folder constant and wrapping happens at wiring). Keys passed through a namespaced store are relative to that folder.
 

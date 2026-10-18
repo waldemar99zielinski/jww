@@ -26,14 +26,14 @@ func updateCurrencyHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		existing, err := deps.CurrencyService.GetByCode(appCtx, code)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		updated := *existing
 		updated.Name = req.Name
 		updated.IsBase = req.IsBase
 		if _, err := deps.CurrencyService.Update(appCtx, updated); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusOK, schema.CurrencyToResponse(updated))

@@ -21,7 +21,7 @@ function buildProps(overrides: Partial<AddTransactionViewProps> = {}): AddTransa
   return {
     type: 'expense',
     onSelectType: vi.fn(),
-    amount: '42.50',
+    amount: '42,50',
     onAmountChange: vi.fn(),
     currencyCode: 'EUR',
     currencies,
@@ -42,12 +42,12 @@ function buildProps(overrides: Partial<AddTransactionViewProps> = {}): AddTransa
     dateLabel: 'Today',
     dateOpen: false,
     onToggleDate: vi.fn(),
-    receipt: null,
-    receiptPickerOpen: false,
-    onOpenReceipt: vi.fn(),
-    onCloseReceipt: vi.fn(),
-    onPickReceipt: vi.fn(),
-    onRemoveReceipt: vi.fn(),
+    attachments: [],
+    attachmentPickerOpen: false,
+    onOpenAttachment: vi.fn(),
+    onCloseAttachment: vi.fn(),
+    onPickAttachment: vi.fn(),
+    onRemoveAttachment: vi.fn(),
     users,
     userId: 'user-1',
     onUserChange: vi.fn(),
@@ -72,7 +72,7 @@ describe.each([
 
     expect(screen.getByLabelText('Transaction name')).toHaveValue('Weekly shop')
     expect(screen.getByLabelText('Transaction description')).toHaveValue('Big shop')
-    expect(screen.getByLabelText('Amount')).toHaveValue('42.50')
+    expect(screen.getByLabelText('Amount')).toHaveValue('42,50')
     expect(screen.getByRole('button', { name: /groceries/i })).toBeInTheDocument()
   })
 
@@ -92,5 +92,22 @@ describe.each([
   it('shows a save error message when saveError is true', () => {
     render(<Variant {...buildProps({ saveError: true })} />)
     expect(screen.getByText(/couldn't save/i)).toBeInTheDocument()
+  })
+
+  it('renders every attachment banner from props', () => {
+    render(
+      <Variant
+        {...buildProps({
+          attachments: [
+            { id: 'row-1', name: 'receipt.jpg', status: 'ready', flow: 'attach', attachmentId: 'a1' },
+            { id: 'row-2', name: 'note.txt', status: 'ready', flow: 'attach', attachmentId: 'a2' },
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getAllByText('Attachment ready')).toHaveLength(2)
+    expect(screen.getByText(/receipt\.jpg/)).toBeInTheDocument()
+    expect(screen.getByText(/note\.txt/)).toBeInTheDocument()
   })
 })

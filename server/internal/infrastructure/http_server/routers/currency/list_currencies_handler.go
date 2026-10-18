@@ -13,7 +13,7 @@ func listCurrenciesHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		currencies, err := deps.CurrencyService.List(appCtx)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		out := make([]schema.CurrencyResponse, len(currencies))

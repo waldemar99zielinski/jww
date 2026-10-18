@@ -522,6 +522,15 @@ func (s *fakeAttachmentStorage) Open(_ domain.AppContext, ref object_storage.Ref
 	return object_storage.Stream{Body: io.NopCloser(bytes.NewReader(b)), ByteSize: int64(len(b))}, nil
 }
 
+func (s *fakeAttachmentStorage) OpenRange(_ domain.AppContext, ref object_storage.Ref, byteRange object_storage.ByteRange) (object_storage.Stream, error) {
+	b, ok := s.objects[ref.Key]
+	if !ok {
+		return object_storage.Stream{}, object_storage.ErrNotFound
+	}
+	b = b[byteRange.Start : byteRange.End+1]
+	return object_storage.Stream{Body: io.NopCloser(bytes.NewReader(b)), ByteSize: int64(len(b))}, nil
+}
+
 func (s *fakeAttachmentStorage) Delete(_ domain.AppContext, ref object_storage.Ref) error {
 	if s.deleteErr != nil {
 		return s.deleteErr

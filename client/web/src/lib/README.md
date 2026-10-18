@@ -6,6 +6,10 @@ if a function needs a hook or touches `fetch`, it belongs in `hooks/` or `api/`,
 ## Files
 
 - `currency.ts` — amount formatting.
+- `amount.ts` — the amount *input's* display↔wire helpers: `sanitizeAmountInput` (keystrokes),
+  `normalizeAmountInput` (blur), `amountToCents` (display string → whole minor units for the API),
+  and `decimalStringToAmountDisplay` (server decimal → the comma display form). Used by the shared
+  `components/AmountHero.tsx` and by the Add Transaction container.
 - `dates.ts` — date formatting/parsing helpers used across pages.
 - `cssVars.ts` — typed helper for setting CSS custom properties from inline `style`.
 - `viewport.ts` / `designMode.ts` / `authToken.ts` / `pwa.ts` — single-flag/value accessors backing

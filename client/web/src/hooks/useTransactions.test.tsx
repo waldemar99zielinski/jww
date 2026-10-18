@@ -2,9 +2,9 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
-import { useCreateTransaction, useTransactions } from '@/hooks/useTransactions'
+import { useCreateTransaction, useTransaction, useTransactions, useUpdateTransaction } from '@/hooks/useTransactions'
 import { createTestQueryClient } from '@/test/renderWithProviders'
-import { fixtureUser } from '@/test/fixtures'
+import { fixtureTransactions, fixtureUser } from '@/test/fixtures'
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = createTestQueryClient()
@@ -21,11 +21,31 @@ describe('useTransactions', () => {
     expect(result.current.data?.[0].name).toBe('October salary')
   })
 
-  it('is disabled (never fetches) when user_id is not provided', () => {
+  it('fetches every transaction when no user_id filter is provided', async () => {
     const { result } = renderHook(() => useTransactions({}), { wrapper })
 
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data).toHaveLength(fixtureTransactions.length)
+  })
+})
+
+describe('useTransaction', () => {
+  it('resolves with the single transaction matching the id', async () => {
+    const { result } = renderHook(() => useTransaction(1), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data?.name).toBe('Weekly shop')
+    expect(result.current.data?.attachments).toHaveLength(2)
+    expect(result.current.data?.attachments[0].preview_grant).toBe('grant-attachment-1')
+    expect(result.current.data?.attachments[1].preview_grant).toBeNull()
+  })
+
+  it('is disabled (never fetches) when the id is not a whole number', () => {
+    const { result } = renderHook(() => useTransaction(Number.NaN), { wrapper })
+
     expect(result.current.fetchStatus).toBe('idle')
-    expect(result.current.isPending).toBe(true)
   })
 })
 
@@ -51,5 +71,17 @@ describe('useCreateTransaction', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.name).toBe('Coffee')
     expect(result.current.data?.category_name).toBe('Groceries')
+  })
+})
+
+describe('useUpdateTransaction', () => {
+  it('patches the transaction and returns the detail shape', async () => {
+    const { result } = renderHook(() => useUpdateTransaction(), { wrapper })
+
+    result.current.mutate({ id: 1, input: { name: 'Renamed', amount: 4200 } })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.id).toBe(1)
+    expect(result.current.data?.name).toBe('Renamed')
   })
 })

@@ -21,7 +21,7 @@ func listCategoriesHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		categories, err := deps.TransactionCategoryService.ListByType(appCtx, categoryType, activeOnly)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		out := make([]schema.TransactionCategoryResponse, len(categories))

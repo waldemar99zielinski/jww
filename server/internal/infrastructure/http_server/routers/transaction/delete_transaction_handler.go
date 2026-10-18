@@ -17,7 +17,7 @@ func deleteTransactionHandler(deps *kernel.Deps) http.HandlerFunc {
 			return
 		}
 		if err := deps.TransactionWorkflow.Delete(appCtx, transactionID); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteNoContent(w)

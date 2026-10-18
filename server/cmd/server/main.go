@@ -54,7 +54,7 @@ func run() error {
 		return err
 	}
 
-	deps, err := buildDeps(ctx, pool, cfg.Auth, cfg.Frankfurter, cfg.Storage, cfg.Http.CorsOriginsList(), cfg.Http.MaxBodyBytes)
+	deps, err := buildDeps(ctx, pool, cfg.JWT, cfg.Frankfurter, cfg.Storage, cfg.Http.CorsOriginsList(), cfg.Http.MaxBodyBytes)
 	if err != nil {
 		return err
 	}

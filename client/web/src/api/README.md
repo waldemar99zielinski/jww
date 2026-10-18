@@ -1,9 +1,10 @@
 # api/
 
-Thin, typed fetch wrappers — one file per server resource (`auth.ts`, `categories.ts`,
-`currencies.ts`, `summary.ts`, `transactions.ts`, `users.ts`), plus `types.ts` for the shared DTO
-shapes and `client.ts` for the one HTTP chokepoint. DTO shapes intentionally mirror the server's
-`server/internal/adapter/schema/*.go` structs — keep them in sync when the server's schema changes.
+Thin, typed fetch wrappers — one file per server resource (`attachments.ts`, `auth.ts`,
+`categories.ts`, `currencies.ts`, `summary.ts`, `transactions.ts`, `users.ts`), plus `types.ts`
+for the shared DTO shapes and `client.ts` for the one HTTP chokepoint. DTO shapes intentionally
+mirror the server's `server/internal/adapter/schema/*.go` structs — keep them in sync when the
+server's schema changes.
 
 ## Conventions
 
@@ -22,6 +23,13 @@ export function listThings(filters: ThingFilters): Promise<ThingDto[]> {
 - `apiFetch<T>` (`client.ts`) is the only place that attaches the auth header, unwraps the
   `{data: T}` response envelope, and converts non-2xx responses into a typed `ApiError`. Call
   it instead of `fetch` directly.
+- Downloads are the one exception to the JSON envelope: `apiDownload` (`client.ts`) mirrors
+  `apiFetch`'s auth header/error handling but returns a `Blob`. `apiUrl` builds the full URL for
+  raw browser-driven requests that can't go through `apiFetch` (an `<img src>` or an `<iframe>`) —
+  e.g. the grant-authenticated attachment preview route.
+- Multipart uploads (`attachments.ts`) pass a `FormData` body to `apiFetch`; it detects this and
+  omits the JSON `Content-Type` so the browser sends its own multipart boundary. The file part
+  must be named `file` (the server's contract).
 - `toQueryString` (`client.ts`) is the shared query-string builder for filter objects — use it
   rather than hand-building query strings.
 - `auth.ts` is the one file that doesn't follow the mock-branch shape — auth is bypassed one

@@ -148,6 +148,15 @@ func (s *fakeStorage) Open(_ domain.AppContext, ref object_storage.Ref) (object_
 	return object_storage.Stream{Body: io.NopCloser(bytes.NewReader(b)), ByteSize: int64(len(b))}, nil
 }
 
+func (s *fakeStorage) OpenRange(_ domain.AppContext, ref object_storage.Ref, byteRange object_storage.ByteRange) (object_storage.Stream, error) {
+	b, ok := s.objects[ref.Key]
+	if !ok {
+		return object_storage.Stream{}, object_storage.ErrNotFound
+	}
+	b = b[byteRange.Start : byteRange.End+1]
+	return object_storage.Stream{Body: io.NopCloser(bytes.NewReader(b)), ByteSize: int64(len(b))}, nil
+}
+
 func (s *fakeStorage) Delete(_ domain.AppContext, ref object_storage.Ref) error {
 	if s.deleteErr != nil {
 		return s.deleteErr
@@ -160,6 +169,26 @@ func (s *fakeStorage) Delete(_ domain.AppContext, ref object_storage.Ref) error 
 type orphanCall struct {
 	id  uuid.UUID
 	err error
+}
+
+type fakeGrantTokens struct {
+	issued    transaction_attachment.GrantClaims
+	issuedAll []transaction_attachment.GrantClaims
+	claims    transaction_attachment.GrantClaims
+	err       error
+}
+
+func (f *fakeGrantTokens) Issue(claims transaction_attachment.GrantClaims) (string, error) {
+	f.issued = claims
+	f.issuedAll = append(f.issuedAll, claims)
+	if f.err != nil {
+		return "", f.err
+	}
+	return "grant-token", nil
+}
+
+func (f *fakeGrantTokens) Verify(string) (transaction_attachment.GrantClaims, error) {
+	return f.claims, f.err
 }
 
 func newService(repo *fakeRepo, storage *fakeStorage) (*transaction_attachment.Service, *[]orphanCall) {
@@ -358,6 +387,107 @@ func TestService_DeleteAllForTransaction(t *testing.T) {
 		require.Error(t, err)
 		assert.Empty(t, repo.deleted)
 		assert.Contains(t, repo.byID, attachment.ID)
+	})
+}
+
+func TestService_AttachmentGrants(t *testing.T) {
+	t.Run("issues a scoped preview grant", func(t *testing.T) {
+		repo, storage := newFakeRepo(), newFakeStorage()
+		tokens := &fakeGrantTokens{}
+		svc := transaction_attachment.NewService(repo, storage, nil, tokens)
+		attachment := seedAttachment(repo)
+		attachment.MediaType = "application/pdf"
+		repo.byID[attachment.ID] = attachment
+
+		grant, err := svc.IssueDraftGrant(appCtx(), attachment.ID, transaction_attachment.GrantPurposePreview)
+		require.NoError(t, err)
+		assert.Equal(t, "grant-token", grant)
+		assert.Equal(t, attachment.ID, tokens.issued.AttachmentID)
+		assert.Nil(t, tokens.issued.TransactionID)
+		assert.Equal(t, attachment.StorageVersion, tokens.issued.StorageVersion)
+	})
+
+	t.Run("rejects unsafe inline media", func(t *testing.T) {
+		repo, storage := newFakeRepo(), newFakeStorage()
+		tokens := &fakeGrantTokens{}
+		svc := transaction_attachment.NewService(repo, storage, nil, tokens)
+		attachment := seedAttachment(repo)
+		attachment.MediaType = "text/html"
+		repo.byID[attachment.ID] = attachment
+
+		_, err := svc.IssueDraftGrant(appCtx(), attachment.ID, transaction_attachment.GrantPurposePreview)
+		require.Error(t, err)
+		assert.Equal(t, uuid.Nil, tokens.issued.AttachmentID)
+	})
+
+	t.Run("batch issues preview grants only for safe media", func(t *testing.T) {
+		repo, storage := newFakeRepo(), newFakeStorage()
+		tokens := &fakeGrantTokens{}
+		svc := transaction_attachment.NewService(repo, storage, nil, tokens)
+		previewable := seedAttachment(repo)
+		previewable.MediaType = "image/png"
+		downloadOnly := seedAttachment(repo)
+		downloadOnly.MediaType = "text/html"
+
+		grants, err := svc.IssuePreviewGrants([]domain.TransactionAttachment{previewable, downloadOnly})
+		require.NoError(t, err)
+		assert.Equal(t, map[uuid.UUID]string{previewable.ID: "grant-token"}, grants)
+		require.Len(t, tokens.issuedAll, 1)
+		assert.Equal(t, previewable.ID, tokens.issuedAll[0].AttachmentID)
+	})
+
+	t.Run("iPhone photo formats are previewable", func(t *testing.T) {
+		for _, mediaType := range []string{"image/dng", "image/x-adobe-dng", "image/heic", "image/heif"} {
+			t.Run(mediaType, func(t *testing.T) {
+				repo, storage := newFakeRepo(), newFakeStorage()
+				tokens := &fakeGrantTokens{}
+				svc := transaction_attachment.NewService(repo, storage, nil, tokens)
+				attachment := seedAttachment(repo)
+				attachment.MediaType = mediaType
+				repo.byID[attachment.ID] = attachment
+
+				_, err := svc.IssueDraftGrant(appCtx(), attachment.ID, transaction_attachment.GrantPurposePreview)
+				require.NoError(t, err)
+				assert.Equal(t, attachment.ID, tokens.issued.AttachmentID)
+			})
+		}
+	})
+
+	t.Run("resolves current metadata and opens only the requested range", func(t *testing.T) {
+		repo, storage := newFakeRepo(), newFakeStorage()
+		attachment := seedAttachment(repo)
+		attachment.ByteSize = 10
+		attachment.MediaType = "application/pdf"
+		repo.byID[attachment.ID] = attachment
+		storage.objects[attachment.StorageKey] = []byte("0123456789")
+		tokens := &fakeGrantTokens{claims: transaction_attachment.GrantClaims{
+			AttachmentID: attachment.ID, StorageVersion: attachment.StorageVersion, Purpose: transaction_attachment.GrantPurposePreview,
+		}}
+		svc := transaction_attachment.NewService(repo, storage, nil, tokens)
+
+		granted, err := svc.ResolveGrant(appCtx(), "grant-token")
+		require.NoError(t, err)
+		stream, err := svc.OpenGranted(appCtx(), *granted, &object_storage.ByteRange{Start: 3, End: 6})
+		require.NoError(t, err)
+		defer stream.Body.Close()
+		got, err := io.ReadAll(stream.Body)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("3456"), got)
+	})
+
+	t.Run("rejects a stale object version", func(t *testing.T) {
+		repo, storage := newFakeRepo(), newFakeStorage()
+		attachment := seedAttachment(repo)
+		tokens := &fakeGrantTokens{claims: transaction_attachment.GrantClaims{
+			AttachmentID: attachment.ID, StorageVersion: "old-version", Purpose: transaction_attachment.GrantPurposeDownload,
+		}}
+		svc := transaction_attachment.NewService(repo, storage, nil, tokens)
+
+		_, err := svc.ResolveGrant(appCtx(), "grant-token")
+		require.Error(t, err)
+		var domainErr domain.DomainError
+		require.ErrorAs(t, err, &domainErr)
+		assert.Equal(t, domain.ErrorKindUnauthorized, domainErr.Kind())
 	})
 }
 

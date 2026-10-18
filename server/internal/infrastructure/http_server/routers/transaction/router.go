@@ -13,11 +13,12 @@ func Mount(_, protected chi.Router, deps *kernel.Deps) {
 	protected.Post("/v1/transactions", createTransactionHandler(deps))
 	protected.Get("/v1/transactions", listTransactionsHandler(deps))
 	protected.Get("/v1/transactions/{transactionID}", getTransactionHandler(deps))
+	protected.Patch("/v1/transactions/{transactionID}", updateTransactionHandler(deps))
 	protected.Delete("/v1/transactions/{transactionID}", deleteTransactionHandler(deps))
 
 	protected.Post("/v1/transactions/{transactionID}/attachments", uploadAttachmentHandler(deps))
 	protected.Put("/v1/transactions/{transactionID}/attachments/{attachmentID}", attachAttachmentHandler(deps))
 	protected.Get("/v1/transactions/{transactionID}/attachments", listAttachmentsHandler(deps))
-	protected.Get("/v1/transactions/{transactionID}/attachments/{attachmentID}/content", downloadAttachmentHandler(deps))
+	protected.Get("/v1/transactions/{transactionID}/attachments/{attachmentID}/download", downloadAttachmentHandler(deps))
 	protected.Delete("/v1/transactions/{transactionID}/attachments/{attachmentID}", deleteAttachmentHandler(deps))
 }

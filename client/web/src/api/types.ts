@@ -25,6 +25,40 @@ export interface TransactionCategoryDto {
   sort_order: number
 }
 
+export interface TransactionAttachmentDto {
+  id: string
+  transaction_id: number | null
+  original_filename: string
+  media_type: string
+  byte_size: number
+  created_at: string
+}
+
+/** A value the reader proposed for one form field, with optional provenance. */
+export interface PrefillField<T = string> {
+  value: T
+  /** 0..1 when the reader scores fields; absent means "unscored". */
+  confidence?: number
+  /** Free-form provenance from the server, e.g. "page 1", "line 12". */
+  source?: string
+}
+
+/** Mirrors the server's attachment-extraction response. Every field is optional by design. */
+export interface TransactionPrefillDto {
+  attachment_id: string
+  type?: PrefillField<TransactionType>
+  /** Decimal string, matching TransactionDto.amount — not a number. */
+  amount?: PrefillField<string>
+  currency_code?: PrefillField<string>
+  occurred_on?: PrefillField<string>
+  name?: PrefillField<string>
+  description?: PrefillField<string>
+  /** A category *name* to match against the loaded list — never an id. */
+  category_hint?: PrefillField<string>
+  warnings?: string[]
+  duration_ms?: number
+}
+
 export interface TransactionDto {
   id: number
   type: TransactionType
@@ -37,6 +71,21 @@ export interface TransactionDto {
   name: string
   created_at: string
   description: string
+  attachments: TransactionAttachmentDto[]
+}
+
+/**
+ * Attachment shape returned by `GET /transactions/{id}` only. Adds a short-lived capability token
+ * for safe inline preview (server-minted for raster images and PDF; `null` for everything else).
+ * List/create responses keep the lightweight `TransactionAttachmentDto` and never mint grants.
+ */
+export interface TransactionAttachmentDetailDto extends TransactionAttachmentDto {
+  preview_grant: string | null
+}
+
+/** `GET /transactions/{id}` response: a transaction whose attachments carry preview grants. */
+export interface TransactionDetailsDto extends Omit<TransactionDto, 'attachments'> {
+  attachments: TransactionAttachmentDetailDto[]
 }
 
 export interface CurrencyStatsDto {

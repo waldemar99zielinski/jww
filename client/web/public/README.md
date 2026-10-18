@@ -8,21 +8,26 @@ for assets that must be served verbatim at a fixed URL.
 
 ## Icons
 
-- `favicon.svg` — **the source art** for every app icon, and the site favicon. A 512-unit canvas:
-  the loader's coin, the `IconWallet` body/flap/dot, and the `JWW` monogram underneath, dark on the
-  accent field (mirrors `--on-accent` on `--accent`). If the brand mark changes, edit this file.
+- `icons/app-icon.svg` — **the source art** for the `purpose: "any"` icons. It matches
+  `favicon.svg`: a warm-white wallet and coin on the rounded `#121212` field.
+- `icons/app-icon-maskable.svg` — **the source art** for maskable icons and the Apple touch icon.
+  It replaces the baked-in rounded tile with a full-bleed field and scales the mark to `0.9`, keeping
+  it within the platform's 40%-radius safe circle. Keep its mark in sync with `app-icon.svg`.
+- `favicon.svg` — the canonical browser favicon supplied for the app.
 - `icons/icon-192.png`, `icons/icon-512.png` — `purpose: "any"` manifest icons (Chromium requires
   192 and 512).
-- `icons/icon-192-maskable.png`, `icons/icon-512-maskable.png` — `purpose: "maskable"`. Same art;
-  the lockup is drawn inside the 80% safe zone. Declared as a **separate** manifest entry, never
-  `"any maskable"` (Lighthouse flags that).
-- `icons/apple-touch-icon.png` — 180×180, opaque and unrounded (iOS applies its own mask). Not
+- `icons/icon-192-maskable.png`, `icons/icon-512-maskable.png` — `purpose: "maskable"`, generated
+  from `app-icon-maskable.svg`. Declared as a **separate** manifest entry, never `"any maskable"`
+  (Lighthouse flags that).
+- `icons/apple-touch-icon.png` — 180×180, opaque and full-bleed (iOS applies its own mask). Not
   named by the manifest, so it is linked manually from `index.html`.
 
-**PNGs are committed; do not add an image-generation step to the build.** Regenerate them by hand
-from `favicon.svg` (e.g. `rsvg-convert -w 192 -h 192 -o public/icons/icon-192.png public/favicon.svg`)
-and commit the result. A build-time image pipeline would be a new dependency and a new failure
-mode for artwork that changes roughly never.
+**PNGs are committed; do not add an image-generation step to the build.** Regenerate them with
+`node scripts/generate-icons.mjs` — a manual, non-build script that rasterises both masters with
+`rsvg-convert` (or Chromium via `@playwright/test` when librsvg is absent) and then verifies sizes,
+the mark's strokes, the maskable safe radius and the absence of text, fonts and motion. Run
+`node scripts/generate-icons.mjs --check` to verify without writing. A build-time image pipeline
+would be a new dependency and a new failure mode for artwork that changes roughly never.
 
 (An unused `icons.svg` — a leftover Vite scaffold sprite with GitHub/Discord/Bluesky icons from
 the template, never referenced anywhere in this app — was removed. If you find yourself wanting

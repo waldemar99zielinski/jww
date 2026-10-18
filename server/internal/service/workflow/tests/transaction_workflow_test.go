@@ -64,7 +64,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, []domain.TransactionCategory{category}, []domain.User{user})
 
-		created, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil)
+		created, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, domain.Money(1500), created.Amount)
@@ -81,7 +81,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture(nil, []domain.TransactionCategory{category}, []domain.User{user})
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -92,7 +92,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, nil, []domain.User{user})
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", uuid.New(), user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", uuid.New(), user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -103,7 +103,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		category := groceries()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, []domain.TransactionCategory{category}, nil)
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, uuid.New(), domain.TransactionSourceManual, "Weekly shop", "", nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, uuid.New(), domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -116,10 +116,128 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, []domain.TransactionCategory{category}, []domain.User{user})
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeIncome, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Salary", "", nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeIncome, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Salary", "", nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
+	})
+}
+
+// ptr returns a pointer to v, for building optional patch fields.
+func ptr[T any](v T) *T { return &v }
+
+type updateFixture struct {
+	*transactionWorkflowFixture
+	expenseCategory domain.TransactionCategory
+	incomeCategory  domain.TransactionCategory
+	euro            domain.Currency
+}
+
+func newUpdateFixture() *updateFixture {
+	expenseCategory := groceries()
+	incomeCategory := domain.TransactionCategory{ID: uuid.New(), Type: domain.TransactionCategoryTypeIncome, Name: "Salary", Active: true}
+	user := julcia()
+	euro := domain.Currency{Code: "EUR", Name: "Euro"}
+	f := newTransactionWorkflowFixture([]domain.Currency{usd, euro}, []domain.TransactionCategory{expenseCategory, incomeCategory}, []domain.User{user})
+	f.transactionRepo.getResult = &domain.Transaction{
+		ID: 7, Type: domain.TransactionTypeExpense, Amount: domain.Money(500),
+		Currency: usd, Category: expenseCategory, User: user,
+		Source: domain.TransactionSourceManual, Name: "Coffee", Description: "note",
+	}
+	return &updateFixture{transactionWorkflowFixture: f, expenseCategory: expenseCategory, incomeCategory: incomeCategory, euro: euro}
+}
+
+func TestTransactionWorkflow_Update(t *testing.T) {
+	t.Run("merges provided fields and leaves the rest untouched", func(t *testing.T) {
+		f := newUpdateFixture()
+
+		result, err := f.workflow.Update(newAppContext(), 7, transaction.Patch{Amount: ptr(domain.Money(999)), Name: ptr("Espresso")})
+
+		require.NoError(t, err)
+		assert.Equal(t, domain.Money(999), result.Transaction.Amount)
+		assert.Equal(t, "Espresso", result.Transaction.Name)
+		assert.Equal(t, "note", result.Transaction.Description, "unpatched fields keep their value")
+		require.Len(t, f.transactionRepo.updated, 1)
+		stored := f.transactionRepo.updated[0]
+		assert.Equal(t, domain.Money(999), stored.Amount)
+		assert.Equal(t, "Espresso", stored.Name)
+		assert.Equal(t, "note", stored.Description)
+		assert.Equal(t, usd.Code, stored.Currency.Code)
+	})
+
+	t.Run("resolves a changed currency, category, user, and source before writing", func(t *testing.T) {
+		f := newUpdateFixture()
+		otherUser := julcia()
+		f.userRepo.byID[otherUser.ID] = otherUser
+
+		result, err := f.workflow.Update(newAppContext(), 7, transaction.Patch{
+			Type:         ptr(domain.TransactionTypeIncome),
+			CurrencyCode: ptr(f.euro.Code),
+			CategoryID:   ptr(f.incomeCategory.ID),
+			UserID:       ptr(otherUser.ID),
+			Source:       ptr(domain.TransactionSourceRecurring),
+		})
+
+		require.NoError(t, err)
+		require.Len(t, f.transactionRepo.updated, 1)
+		stored := f.transactionRepo.updated[0]
+		assert.Equal(t, domain.TransactionTypeIncome, stored.Type)
+		assert.Equal(t, "EUR", stored.Currency.Code)
+		assert.Equal(t, f.incomeCategory.ID, stored.Category.ID)
+		assert.Equal(t, otherUser.ID, stored.User.ID)
+		assert.Equal(t, domain.TransactionSourceRecurring, stored.Source)
+		assert.Equal(t, f.euro.Code, result.Transaction.Currency.Code)
+	})
+
+	t.Run("updates the transaction date", func(t *testing.T) {
+		f := newUpdateFixture()
+		when := time.Date(2024, 3, 15, 12, 30, 0, 0, time.UTC)
+
+		_, err := f.workflow.Update(newAppContext(), 7, transaction.Patch{CreatedAt: ptr(when)})
+
+		require.NoError(t, err)
+		require.Len(t, f.transactionRepo.updated, 1)
+		assert.True(t, when.Equal(f.transactionRepo.updated[0].CreatedAt))
+	})
+
+	t.Run("an empty patch performs no write", func(t *testing.T) {
+		f := newUpdateFixture()
+
+		_, err := f.workflow.Update(newAppContext(), 7, transaction.Patch{})
+
+		require.NoError(t, err)
+		assert.Empty(t, f.transactionRepo.updated)
+	})
+
+	t.Run("unknown transaction is not found", func(t *testing.T) {
+		f := newUpdateFixture()
+		f.transactionRepo.getResult = nil
+
+		_, err := f.workflow.Update(newAppContext(), 7, transaction.Patch{Name: ptr("X")})
+
+		require.Error(t, err)
+		assert.Empty(t, f.transactionRepo.updated)
+	})
+
+	t.Run("unknown currency fails before writing", func(t *testing.T) {
+		f := newUpdateFixture()
+
+		_, err := f.workflow.Update(newAppContext(), 7, transaction.Patch{CurrencyCode: ptr("GBP")})
+
+		require.Error(t, err)
+		assert.Empty(t, f.transactionRepo.updated)
+	})
+
+	t.Run("a type no longer matching the category is a validation error before writing", func(t *testing.T) {
+		f := newUpdateFixture()
+
+		_, err := f.workflow.Update(newAppContext(), 7, transaction.Patch{Type: ptr(domain.TransactionTypeIncome)})
+
+		require.Error(t, err)
+		var domainErr domain.DomainError
+		require.ErrorAs(t, err, &domainErr)
+		assert.Equal(t, domain.ErrorKindValidation, domainErr.Kind())
+		assert.Empty(t, f.transactionRepo.updated)
 	})
 }
 

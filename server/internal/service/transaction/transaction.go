@@ -28,6 +28,7 @@ func (s *Service) Create(
 	source domain.TransactionSource,
 	name string,
 	description string,
+	createdAt *time.Time,
 	uow ...unit_of_work.UnitOfWork,
 ) (*domain.Transaction, error) {
 	tr := domain.Transaction{
@@ -43,7 +44,12 @@ func (s *Service) Create(
 	if err := tr.Validate(); err != nil {
 		return nil, err
 	}
-	created, err := s.repository.Create(ctx, transactionType, amount, currency, category, user, source, time.Now().UTC(), name, description, uow...)
+	// The transaction's date defaults to now; a caller may supply it explicitly.
+	when := time.Now().UTC()
+	if createdAt != nil {
+		when = createdAt.UTC()
+	}
+	created, err := s.repository.Create(ctx, transactionType, amount, currency, category, user, source, when, name, description, uow...)
 	if err != nil {
 		return nil, err
 	}

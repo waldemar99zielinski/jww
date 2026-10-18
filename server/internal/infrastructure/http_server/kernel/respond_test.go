@@ -5,7 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"jww/internal/domain"
 )
@@ -59,7 +62,7 @@ func TestWriteErrorMapsKinds(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			WriteError(rec, tc.err)
+			WriteError(rec, httptest.NewRequest(http.MethodGet, "/", nil), tc.err)
 
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d", rec.Code, tc.wantStatus)
@@ -80,7 +83,7 @@ func TestWriteErrorMapsKinds(t *testing.T) {
 
 func TestWriteErrorUnauthorizedSetsBearerChallenge(t *testing.T) {
 	rec := httptest.NewRecorder()
-	WriteError(rec, domain.NewAuthenticationError())
+	WriteError(rec, httptest.NewRequest(http.MethodGet, "/", nil), domain.NewAuthenticationError())
 
 	if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
 		t.Fatalf("WWW-Authenticate = %q, want Bearer", got)
@@ -89,7 +92,7 @@ func TestWriteErrorUnauthorizedSetsBearerChallenge(t *testing.T) {
 
 func TestWriteErrorInternalDoesNotLeakCause(t *testing.T) {
 	rec := httptest.NewRecorder()
-	WriteError(rec, errors.New("connection string leaked"))
+	WriteError(rec, httptest.NewRequest(http.MethodGet, "/", nil), errors.New("connection string leaked"))
 
 	var body ErrorEnvelope
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -97,6 +100,23 @@ func TestWriteErrorInternalDoesNotLeakCause(t *testing.T) {
 	}
 	if body.Error.Message != "internal server error" {
 		t.Fatalf("message = %q, want %q", body.Error.Message, "internal server error")
+	}
+}
+
+func TestWriteErrorRecordsFullCauseForRequestLogging(t *testing.T) {
+	cause := errors.New("s3: NoSuchKey bucket/object")
+	err := domain.NewAttachmentIntegrityError(uuid.New(), cause)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/attachment-content", nil)
+	req = req.WithContext(withRequestErrorState(req.Context()))
+
+	WriteError(httptest.NewRecorder(), req, err)
+
+	if got := requestError(req); !errors.Is(got, cause) {
+		t.Fatalf("recorded error = %v, want wrapped storage cause", got)
+	}
+	chain := formatErrorChain(requestError(req))
+	if !strings.Contains(chain, "has no readable object") || !strings.Contains(chain, "NoSuchKey") {
+		t.Fatalf("error chain = %q, want domain context and root cause", chain)
 	}
 }
 

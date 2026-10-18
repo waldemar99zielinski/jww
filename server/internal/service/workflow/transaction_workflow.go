@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -29,6 +30,11 @@ type TransactionWorkflow struct {
 	transactionService *transaction.Service
 	attachmentService  *transaction_attachment.Service
 	uowManager         unit_of_work.Manager
+}
+
+type TransactionWithPreviewGrants struct {
+	Transaction   domain.Transaction
+	PreviewGrants map[uuid.UUID]string
 }
 
 func NewTransactionWorkflow(
@@ -62,6 +68,7 @@ func (w *TransactionWorkflow) Create(
 	source domain.TransactionSource,
 	name string,
 	description string,
+	createdAt *time.Time,
 	attachmentIDs []uuid.UUID,
 ) (*domain.Transaction, error) {
 	uow, err := w.uowManager.Create(ctx)
@@ -98,7 +105,7 @@ func (w *TransactionWorkflow) Create(
 		attachments = locked
 	}
 
-	created, err := w.transactionService.Create(ctx, transactionType, amount, *curr, *category, *u, source, name, description, uow)
+	created, err := w.transactionService.Create(ctx, transactionType, amount, *curr, *category, *u, source, name, description, createdAt, uow)
 	if err != nil {
 		_ = uow.Restore(ctx)
 		return nil, err
@@ -178,6 +185,106 @@ func (w *TransactionWorkflow) Get(ctx domain.AppContext, transactionID int64) (*
 		return nil, err
 	}
 	return t, nil
+}
+
+// GetWithPreviewGrants loads a transaction and issues short-lived inline
+// preview grants for each safely previewable attachment. List/create responses
+// deliberately do not mint capabilities.
+func (w *TransactionWorkflow) GetWithPreviewGrants(ctx domain.AppContext, transactionID int64) (*TransactionWithPreviewGrants, error) {
+	t, err := w.Get(ctx, transactionID)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := w.attachmentService.IssuePreviewGrants(t.Attachments)
+	if err != nil {
+		return nil, err
+	}
+	return &TransactionWithPreviewGrants{Transaction: *t, PreviewGrants: grants}, nil
+}
+
+// Update applies a partial patch to an existing transaction. It loads the
+// current row, resolves any referenced currency/category/user, merges the
+// provided fields, re-validates the whole result (so a type change that no
+// longer agrees with the category is a 400), and writes it. The result carries
+// hydrated attachments and preview grants, matching the GET detail response.
+// An empty patch is a read-only no-op that returns the current state.
+func (w *TransactionWorkflow) Update(ctx domain.AppContext, transactionID int64, patch transaction.Patch) (*TransactionWithPreviewGrants, error) {
+	current, err := w.transactionService.GetByID(ctx, transactionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !patch.Empty() {
+		if err := w.applyPatch(ctx, current, patch); err != nil {
+			return nil, err
+		}
+		if err := current.Validate(); err != nil {
+			return nil, domain.NewValidationError(err.Error())
+		}
+		if _, err := w.transactionService.Update(ctx, *current); err != nil {
+			return nil, err
+		}
+	}
+
+	attachments, err := w.attachmentService.ListForTransaction(ctx, transactionID)
+	if err != nil {
+		return nil, err
+	}
+	if attachments == nil {
+		attachments = []domain.TransactionAttachment{}
+	}
+	current.Attachments = attachments
+	grants, err := w.attachmentService.IssuePreviewGrants(current.Attachments)
+	if err != nil {
+		return nil, err
+	}
+	return &TransactionWithPreviewGrants{Transaction: *current, PreviewGrants: grants}, nil
+}
+
+// applyPatch resolves every referenced resource and mutates t in place. A
+// missing currency, category, or user surfaces as the service's not-found domain
+// error; field-level validity of the merged entity is left to the caller.
+func (w *TransactionWorkflow) applyPatch(ctx domain.AppContext, t *domain.Transaction, patch transaction.Patch) error {
+	if patch.CurrencyCode != nil {
+		curr, err := w.currencyService.GetByCode(ctx, *patch.CurrencyCode)
+		if err != nil {
+			return err
+		}
+		t.Currency = *curr
+	}
+	if patch.CategoryID != nil {
+		category, err := w.categoryService.GetByID(ctx, *patch.CategoryID)
+		if err != nil {
+			return err
+		}
+		t.Category = *category
+	}
+	if patch.UserID != nil {
+		u, err := w.userService.GetByID(ctx, *patch.UserID)
+		if err != nil {
+			return err
+		}
+		t.User = *u
+	}
+	if patch.Type != nil {
+		t.Type = *patch.Type
+	}
+	if patch.Amount != nil {
+		t.Amount = *patch.Amount
+	}
+	if patch.Source != nil {
+		t.Source = *patch.Source
+	}
+	if patch.Name != nil {
+		t.Name = *patch.Name
+	}
+	if patch.Description != nil {
+		t.Description = *patch.Description
+	}
+	if patch.CreatedAt != nil {
+		t.CreatedAt = patch.CreatedAt.UTC()
+	}
+	return nil
 }
 
 // Delete asks the attachment service to delete every attachment in full before

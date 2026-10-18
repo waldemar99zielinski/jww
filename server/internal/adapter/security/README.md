@@ -2,13 +2,12 @@
 
 **Clean Architecture layer: Interface Adapter (outbound/driven).** Implements the `PasswordHasher`/`TokenService` ports.
 
-**Role.** Implements the auth/user security ports: password hashing (Argon2id) and token issuing/verification (JWT). The **only** place that knows passwords are Argon2id and tokens are JWTs. Owns `security.Config` (`JWT_*`).
+**Role.** Security adapters. The parent package owns Argon2id password hashing; the [`jwt/`](jwt/README.md) subpackage owns all JWT configuration and token implementations.
 
 ## Files
 
-- `config.go` — `Config{ SecretKey, Algorithm, AccessTokenExpireMinutes }` (`JWT_SECRET_KEY` required, no default; `JWT_ALGORITHM` default `HS256`; `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` default `60`); `LoadConfig()` also rejects an unsupported `Algorithm` (`jwt.GetSigningMethod` returning nil) so a typo fails at startup, not on the first login.
 - `argon2_password_hasher.go` — package doc; `Argon2PasswordHasher` + `NewArgon2PasswordHasher()`; `Hash` (random salt via `crypto/rand`, PHC string) and `Verify` (re-derive + `crypto/subtle.ConstantTimeCompare`, boolean-only).
-- `jwt_token_service.go` — `JwtTokenService` + `NewJwtTokenService(cfg Config)`; `Issue(userID) (string, error)`, `Verify(token) (*uuid.UUID, error)` using `jwt.WithValidMethods` to pin the algorithm.
+- `jwt/` — `Config`, shared private codec, `AccessTokenService`, and `AttachmentGrantService`, split by responsibility.
 
 ## Rules
 
@@ -16,7 +15,7 @@
 - Implicit interface conformance to `service/auth.PasswordHasher`, `service/user.PasswordHasher`, `service/auth.TokenService`.
 - Errors: wrap with `%w` and a subsystem prefix (`"argon2: generating salt: %w"`, `"security: ... %w"`).
 - Security primitives: `crypto/rand`, `crypto/subtle`, `jwt.WithValidMethods`. Never log/return secret material.
-- Config fields use `env`/`bind`/`default` tags and `LoadConfig()`; add new vars to `server/.env.example`.
+- JWT config fields live in `jwt/config.go`; add new variables to `server/.env.example`.
 
 ## How to add
 
@@ -36,7 +35,7 @@ black-box) — no testcontainers needed:
 - `Argon2PasswordHasher`: hash/verify round-trip, wrong password fails,
   two hashes of the same password differ (random salt), malformed/garbage
   hash input fails `Verify` without panicking.
-- `JwtTokenService`: sign/verify round-trip, wrong secret fails, expired
+- `jwt.AccessTokenService`: sign/verify round-trip, wrong secret fails, expired
   token fails, a token signed with an algorithm other than the verifier's
   pinned one is rejected even with the right secret.
 - `LoadConfig`: valid env + defaults succeeds; an unsupported
@@ -53,4 +52,4 @@ round-trip test and a failure-mode test. See
 - Verifying JWTs without restricting the signing method.
 - Shipping a default/example secret.
 - Hashing/token logic outside this package; logging passwords/hashes/tokens.
-- Imports other than stdlib, `argon2`, `jwt/v5`, `uuid`, `utils/configuration`.
+- JWT libraries and token claims in the parent package; keep them in the `jwt` subpackage.

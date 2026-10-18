@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"jww/internal/adapter/schema"
+	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/domain"
 	"jww/internal/infrastructure/http_server/kernel"
 	attachmentrouter "jww/internal/infrastructure/http_server/routers/transaction_attachment"
@@ -112,6 +115,15 @@ func (s *fakeStorage) Open(_ domain.AppContext, ref object_storage.Ref) (object_
 	return object_storage.Stream{Body: io.NopCloser(bytes.NewReader(b)), ByteSize: int64(len(b))}, nil
 }
 
+func (s *fakeStorage) OpenRange(_ domain.AppContext, ref object_storage.Ref, byteRange object_storage.ByteRange) (object_storage.Stream, error) {
+	b, ok := s.objects[ref.Key]
+	if !ok {
+		return object_storage.Stream{}, object_storage.ErrNotFound
+	}
+	b = b[byteRange.Start : byteRange.End+1]
+	return object_storage.Stream{Body: io.NopCloser(bytes.NewReader(b)), ByteSize: int64(len(b))}, nil
+}
+
 func (s *fakeStorage) Delete(_ domain.AppContext, ref object_storage.Ref) error {
 	s.deleted = append(s.deleted, ref.Key)
 	delete(s.objects, ref.Key)
@@ -129,11 +141,27 @@ type fixture struct {
 func newFixture() *fixture {
 	repo := newFakeRepo()
 	storage := newFakeStorage()
-	svc := transaction_attachment.NewService(repo, storage, nil)
+	grants := jwtadapter.NewAttachmentGrantService(jwtadapter.Config{
+		SecretKey: "attachment-handler-test-secret", Algorithm: "HS256", AccessTokenExpireMinutes: 60,
+	}, 5*time.Minute)
+	svc := transaction_attachment.NewService(repo, storage, nil, grants)
 	deps := &kernel.Deps{TransactionAttachmentService: svc}
 	r := chi.NewRouter()
 	attachmentrouter.Mount(r, r, deps)
 	return &fixture{router: r, repo: repo, storage: storage}
+}
+
+func issueDraftGrant(t *testing.T, f *fixture, attachmentID uuid.UUID, purpose string) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/transaction-attachments/"+attachmentID.String()+"/grants", strings.NewReader(`{"purpose":"`+purpose+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	f.router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var response schema.TransactionAttachmentGrantResponse
+	decodeData(t, rec, &response)
+	require.NotEmpty(t, response.Grant)
+	return response.Grant
 }
 
 func multipartBody(t *testing.T, filename, contentType, content string, extra func(*multipart.Writer)) (*bytes.Buffer, string) {
@@ -268,7 +296,7 @@ func TestDownloadDraftHandler(t *testing.T) {
 		var uploaded schema.TransactionAttachmentResponse
 		decodeData(t, rec, &uploaded)
 
-		req := httptest.NewRequest(http.MethodGet, "/v1/transaction-attachments/"+uploaded.ID.String()+"/content", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/transaction-attachments/"+uploaded.ID.String()+"/download", nil)
 		dl := httptest.NewRecorder()
 		f.router.ServeHTTP(dl, req)
 
@@ -277,6 +305,74 @@ func TestDownloadDraftHandler(t *testing.T) {
 		assert.Equal(t, "application/pdf", dl.Header().Get("Content-Type"))
 		assert.Contains(t, dl.Header().Get("Content-Disposition"), "attachment;")
 		assert.Equal(t, "nosniff", dl.Header().Get("X-Content-Type-Options"))
+	})
+}
+
+func TestGrantedContentHandler(t *testing.T) {
+	t.Run("preview grant streams an inline byte range", func(t *testing.T) {
+		f := newFixture()
+		draft := seedDraft(f.repo)
+		f.storage.objects[draft.StorageKey] = []byte("0123456789")
+		draft.ByteSize = 10
+		f.repo.byID[draft.ID] = draft
+		grant := issueDraftGrant(t, f, draft.ID, "preview")
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/attachment-content?grant="+url.QueryEscape(grant), nil)
+		req.Header.Set("Range", "bytes=2-5")
+		rec := httptest.NewRecorder()
+		f.router.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusPartialContent, rec.Code)
+		assert.Equal(t, "2345", rec.Body.String())
+		assert.Equal(t, "bytes 2-5/10", rec.Header().Get("Content-Range"))
+		assert.Contains(t, rec.Header().Get("Content-Disposition"), "inline;")
+	})
+
+	t.Run("download grant forces attachment disposition", func(t *testing.T) {
+		f := newFixture()
+		draft := seedDraft(f.repo)
+		f.storage.objects[draft.StorageKey] = []byte("pdf")
+		grant := issueDraftGrant(t, f, draft.ID, "download")
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/attachment-content?grant="+url.QueryEscape(grant), nil)
+		rec := httptest.NewRecorder()
+		f.router.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Header().Get("Content-Disposition"), "attachment;")
+	})
+
+	t.Run("invalid grant is unauthorized", func(t *testing.T) {
+		f := newFixture()
+		req := httptest.NewRequest(http.MethodGet, "/v1/attachment-content?grant=invalid", nil)
+		rec := httptest.NewRecorder()
+		f.router.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("multiple ranges are rejected", func(t *testing.T) {
+		f := newFixture()
+		draft := seedDraft(f.repo)
+		f.storage.objects[draft.StorageKey] = []byte("pdf")
+		grant := issueDraftGrant(t, f, draft.ID, "preview")
+		req := httptest.NewRequest(http.MethodGet, "/v1/attachment-content?grant="+url.QueryEscape(grant), nil)
+		req.Header.Set("Range", "bytes=0-0,2-2")
+		rec := httptest.NewRecorder()
+		f.router.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusRequestedRangeNotSatisfiable, rec.Code)
+		assert.Equal(t, "bytes */3", rec.Header().Get("Content-Range"))
+	})
+
+	t.Run("unsafe media type cannot receive a preview grant", func(t *testing.T) {
+		f := newFixture()
+		draft := seedDraft(f.repo)
+		draft.MediaType = "text/html"
+		f.repo.byID[draft.ID] = draft
+		req := httptest.NewRequest(http.MethodPost, "/v1/transaction-attachments/"+draft.ID.String()+"/grants", strings.NewReader(`{"purpose":"preview"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		f.router.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 }
 

@@ -19,13 +19,18 @@ type Service struct {
 	repository   Repository
 	storage      object_storage.Store
 	reportOrphan OrphanReporter
+	grantTokens  GrantTokenService
 }
 
-func NewService(repository Repository, storage object_storage.Store, reportOrphan OrphanReporter) *Service {
+func NewService(repository Repository, storage object_storage.Store, reportOrphan OrphanReporter, grantTokens ...GrantTokenService) *Service {
 	if reportOrphan == nil {
 		reportOrphan = func(domain.AppContext, uuid.UUID, error) {}
 	}
-	return &Service{repository: repository, storage: storage, reportOrphan: reportOrphan}
+	var tokens GrantTokenService
+	if len(grantTokens) > 0 {
+		tokens = grantTokens[0]
+	}
+	return &Service{repository: repository, storage: storage, reportOrphan: reportOrphan, grantTokens: tokens}
 }
 
 func objectKey(id uuid.UUID) string { return id.String() }

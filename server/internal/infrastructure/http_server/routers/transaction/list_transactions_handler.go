@@ -23,7 +23,7 @@ func listTransactionsHandler(deps *kernel.Deps) http.HandlerFunc {
 		}
 		transactions, err := deps.TransactionWorkflow.List(appCtx, filter)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		out := make([]schema.TransactionResponse, len(transactions))

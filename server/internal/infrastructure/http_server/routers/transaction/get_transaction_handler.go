@@ -18,11 +18,12 @@ func getTransactionHandler(deps *kernel.Deps) http.HandlerFunc {
 			return
 		}
 
-		t, err := deps.TransactionWorkflow.Get(appCtx, transactionID)
+		result, err := deps.TransactionWorkflow.GetWithPreviewGrants(appCtx, transactionID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
-		kernel.WriteJSON(w, http.StatusOK, schema.TransactionToResponse(*t))
+		w.Header().Set("Cache-Control", "private, no-store")
+		kernel.WriteJSON(w, http.StatusOK, schema.TransactionToDetailsResponse(result.Transaction, result.PreviewGrants))
 	}
 }

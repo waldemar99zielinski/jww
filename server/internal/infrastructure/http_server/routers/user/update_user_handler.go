@@ -29,13 +29,13 @@ func updateUserHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		existing, err := deps.UserService.GetByID(appCtx, userID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		updated := *existing
 		updated.DisplayName = req.DisplayName
 		if _, err := deps.UserService.Update(appCtx, updated); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusOK, schema.UserToResponse(updated))

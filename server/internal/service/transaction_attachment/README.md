@@ -11,10 +11,11 @@
 - `transaction_attachment.go` — storage namespace, orphan reporter, and service.
   - `object_storage.Store` (from [`../object_storage`](../object_storage/README.md)) — the shared, purpose-agnostic blob port this service consumes; it is not defined here.
   - `object_storage.StorageNamespace = "transaction-attachments"` is this purpose's folder inside the shared bucket. Wiring wraps the shared store with `object_storage.Namespaced(store, object_storage.StorageNamespace)`, so the service sees a store already scoped to that folder and uses plain UUID keys.
-  - `Service` + `NewService(repository, storage, reportOrphan)`.
+  - `Service` + `NewService(repository, storage, reportOrphan, grantTokens...)`.
   - `UploadDraft` / `UploadForTransaction` generate an opaque key (the attachment UUID), stream the body through a counting reader (bytes are measured, never buffered whole), and compensate by deleting the object if the metadata write fails. Because the injected store is namespaced, the physical path is `"<bucket>/transaction-attachments/<uuid>"` while `storage_key` (namespace-relative) is just the UUID.
   - `GetDraft`/`OpenDraft`/`DeleteDraft` operate on unattached drafts only; a linked attachment is not found. `GetForTransaction`/`OpenForTransaction`/`DeleteForTransaction` authorize through the parent.
   - `LockByIDs`/`Link`/`ListByTransactionIDs` are hooks a workflow calls inside its own unit of work. `DeleteAllForTransaction` deletes each object's bytes and metadata and forwards the workflow UoW so all metadata rows commit with the parent transaction deletion.
+  - `IssueDraftGrant` issues a purpose-bound capability after draft-scoped authorization. `IssuePreviewGrants` batches preview capabilities for attachments already authorized by the transaction workflow. A preview is offered for `image/jpeg|png|webp|gif|avif|heic|heif|dng` (and `image/x-adobe-dng`) plus `application/pdf`; DNG and (outside Safari) HEIC are not renderable by browsers, so the client degrades to a download affordance when the inline image fails. `ResolveGrant` rechecks current metadata and object version; `OpenGranted` streams a full object or validated byte range through the server.
 
 ## Rules
 

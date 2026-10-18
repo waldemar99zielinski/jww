@@ -9,6 +9,7 @@ import (
 
 	"jww/internal/adapter/gateway"
 	"jww/internal/adapter/security"
+	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/adapter/storage"
 	"jww/internal/domain"
 	"jww/internal/infrastructure/database"
@@ -43,11 +44,12 @@ func (stubRateSource) Rates(domain.AppContext, []string, time.Time) (currency_ex
 func BuildTestDeps(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, storageConfig storage.Config) (*kernel.Deps, error) {
 	uowManager := database.NewPostgresUnitOfWorkManager(pool)
 	passwordHasher := security.NewArgon2PasswordHasher()
-	tokenService := security.NewJwtTokenService(security.Config{
+	jwtConfig := jwtadapter.Config{
 		SecretKey:                jwtSecret,
 		Algorithm:                "HS256",
 		AccessTokenExpireMinutes: 60,
-	})
+	}
+	tokenService := jwtadapter.NewAccessTokenService(jwtConfig)
 
 	userRepo := gateway.NewPostgresUserRepository(pool)
 	currencyRepo := gateway.NewPostgresCurrencyRepository(pool)
@@ -68,7 +70,8 @@ func BuildTestDeps(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, st
 	categoryService := transaction_category.NewService(categoryRepo, uowManager)
 	transactionService := transaction.NewService(transactionRepo, uowManager)
 	attachmentStore := object_storage.Namespaced(objectStore, object_storage.StorageTransactionAttachmentsNamespace)
-	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStore, reportOrphanedObject)
+	attachmentGrantService := jwtadapter.NewAttachmentGrantService(jwtConfig, 5*time.Minute)
+	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStore, reportOrphanedObject, attachmentGrantService)
 
 	return &kernel.Deps{
 		AuthService:                  authService,

@@ -23,7 +23,7 @@ func loginHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		token, err := deps.AuthService.Login(appCtx, req.Username, req.Password)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusOK, schema.NewTokenResponse(token))

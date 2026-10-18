@@ -23,7 +23,7 @@ func createExchangeRateHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		rate, err := deps.CurrencyExchangeRateWorkflow.Create(appCtx, req.FromCurrencyCode, req.ToCurrencyCode, req.Rate)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusCreated, schema.ExchangeRateToResponse(*rate))

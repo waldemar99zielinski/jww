@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createCategory, listCategories, updateCategory } from '@/api/categories'
 import type { TransactionType } from '@/api/types'
 
-export function useCategories(type: TransactionType, activeOnly = true) {
+/** `enabled = false` keeps the query idle — used by screens that only need categories once a form opens. */
+export function useCategories(type: TransactionType, activeOnly = true, enabled = true) {
   return useQuery({
     queryKey: ['categories', type, activeOnly],
     queryFn: () => listCategories(type, activeOnly),
+    enabled,
   })
 }
 

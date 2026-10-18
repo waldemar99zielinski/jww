@@ -19,10 +19,14 @@ export class ApiError extends Error {
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAuthToken()
 
-  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+  // A FormData body needs the browser's own Content-Type (which includes the multipart
+  // boundary), so only default to JSON when the caller isn't sending a form.
+  const isFormData = init?.body instanceof FormData
+
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
@@ -38,6 +42,31 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   const body = (await response.json()) as { data: T }
   return body.data
+}
+
+/**
+ * Full URL for a path under the API prefix. Use this for raw browser-driven requests that can't
+ * go through `apiFetch` — e.g. an `<img src>` (which can't carry the auth header, so it must use a
+ * grant URL) or a `target="_blank"` preview link.
+ */
+export function apiUrl(path: string): string {
+  return `${API_BASE_URL}${API_PREFIX}${path}`
+}
+
+/**
+ * Downloads raw bytes. Attachments (and only attachments) are the documented exception to the JSON
+ * `{data}` envelope, so this mirrors `apiFetch`'s auth header and error handling but returns the
+ * body as a `Blob` instead of unwrapping JSON.
+ */
+export async function apiDownload(path: string): Promise<Blob> {
+  const token = getAuthToken()
+  const response = await fetch(apiUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!response.ok) {
+    throw new ApiError(response.status, await readErrorMessage(response))
+  }
+  return response.blob()
 }
 
 async function readErrorMessage(response: Response): Promise<string> {

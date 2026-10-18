@@ -13,7 +13,7 @@ func listUsersHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		users, err := deps.UserService.List(appCtx)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		out := make([]schema.UserResponse, len(users))

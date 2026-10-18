@@ -20,6 +20,19 @@ call these hooks, never TanStack Query's hooks directly.
   backing — `useViewport` and `useOnlineStatus` are `useSyncExternalStore` wrappers over a browser
   flag (breakpoint, connectivity); `useInstallPrompt` wraps Chromium's `beforeinstallprompt`/
   `appinstalled` events. All three are browser-state hooks, not server resources.
+- `useScrollLock.ts` freezes background scrolling while an overlay is open. It locks the document
+  plus any `[data-scroll-lock]` element (the desktop shell scrolls an inner `<main>`, not the body),
+  and is reference-counted so stacked overlays don't unlock each other early.
+- `useAttachments.ts` wraps the attachment endpoints: the draft mutations
+  (`useUploadDraftAttachment`, `useDeleteDraftAttachment`) invalidate nothing — a draft has no list
+  of its own, and `useCreateTransaction` already invalidates the transaction/summary queries when
+  the draft is linked on save — while `useDeleteTransactionAttachment` (deleting a *linked*
+  attachment) invalidates `['transactions']` + `['summary']`, since the detail screen shows the row
+  it removes.
+- `useTransactions.ts` exposes `useTransactions(filters)` (the list, key `['transactions', filters]`),
+  `useTransaction(id)` (one record for the detail screen, key `['transactions', 'detail', id]`), and
+  `useUpdateTransaction` (a PATCH mutation) — so the `['transactions']` prefix invalidation from
+  `useCreateTransaction`/`useUpdateTransaction` refreshes both queries.
 
 ## Adding a new resource hook
 

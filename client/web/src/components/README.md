@@ -43,7 +43,17 @@ here instead of copying it.
   - `Section.tsx`, `StatusBanner.tsx`, `ProgressBar.tsx` — small generic display primitives used
     across pages but one level above `ui/` (slightly more opinionated than a raw form control).
   - `TransactionRow.tsx` — genuinely reused across two pages (`pages/home/`, `pages/transactions/`)
-    at once, which is why it lives here rather than in either page's own `components/` folder.
+    at once, which is why it lives here rather than in either page's own `components/` folder. Its
+    optional `to` prop turns the row into a `react-router` link (used by `pages/transactions/` to
+    open the detail screen); omitted, it renders as a plain non-interactive row (as on the home
+    page).
+  - `AmountHero.tsx`, `DateTimeFields.tsx`, `MoreOptionsPanel.tsx`, `categoryOptions.tsx` — the
+    reusable pieces of a transaction form, shared by the Add Transaction screen (`pages/add/`) and
+    the transaction detail screen's edit mode (`pages/transactions/detail/`). `AmountHero` renders
+    the amount + currency block (`boxed` for desktop, `fullWidth` for mobile), `DateTimeFields` the
+    date/time pickers, and `MoreOptionsPanel` the payer picker. `categoryOptions.tsx` is a
+    data-mapping helper (`toCategoryOptions`), not a component — it sits here beside its only
+    consumers. The matching amount display/wire helpers live in `lib/amount.ts`.
   - `icons.tsx` — **the one exception** to one-component-per-file: a hand-drawn SVG icon set
     behind a single shared `Icon` wrapper. Splitting 24+ one-line icon components into 24+ files
     would hurt navigability more than it helps — add new icons here, don't inline SVG elsewhere.

@@ -140,10 +140,37 @@ func TestService_Create_HappyPath(t *testing.T) {
 	svc := transaction.NewService(repo, &fakeUoWManager{})
 
 	got, err := svc.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(500),
-		testCurrency, testCategory, testUser, domain.TransactionSourceManual, "Groceries run", "")
+		testCurrency, testCategory, testUser, domain.TransactionSourceManual, "Groceries run", "", nil)
 	require.NoError(t, err)
 	assert.Equal(t, domain.Money(500), got.Amount)
 	assert.Equal(t, 1, repo.createCalls)
+}
+
+func TestService_Create_UsesProvidedCreatedAt(t *testing.T) {
+	repo := newFakeRepo()
+	svc := transaction.NewService(repo, &fakeUoWManager{})
+	// A non-UTC zone, to prove the stored instant is normalized to UTC.
+	when := time.Date(2024, 3, 15, 14, 30, 0, 0, time.FixedZone("CEST", 2*60*60))
+
+	got, err := svc.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(500),
+		testCurrency, testCategory, testUser, domain.TransactionSourceManual, "Dated", "", &when)
+
+	require.NoError(t, err)
+	assert.True(t, when.Equal(got.CreatedAt))
+	assert.Equal(t, time.UTC, got.CreatedAt.Location())
+}
+
+func TestService_Create_DefaultsCreatedAtToNow(t *testing.T) {
+	repo := newFakeRepo()
+	svc := transaction.NewService(repo, &fakeUoWManager{})
+	before := time.Now().UTC().Add(-time.Second)
+
+	got, err := svc.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(500),
+		testCurrency, testCategory, testUser, domain.TransactionSourceManual, "Now", "", nil)
+
+	require.NoError(t, err)
+	assert.False(t, got.CreatedAt.Before(before))
+	assert.WithinDuration(t, time.Now().UTC(), got.CreatedAt, time.Minute)
 }
 
 func TestService_Create_ValidationFailureNeverCallsRepo(t *testing.T) {
@@ -152,7 +179,7 @@ func TestService_Create_ValidationFailureNeverCallsRepo(t *testing.T) {
 
 	// category type (expense) doesn't match the transaction type (income).
 	_, err := svc.Create(newAppContext(), domain.TransactionTypeIncome, domain.Money(500),
-		testCurrency, testCategory, testUser, domain.TransactionSourceManual, "Mismatched", "")
+		testCurrency, testCategory, testUser, domain.TransactionSourceManual, "Mismatched", "", nil)
 	assert.Error(t, err)
 	assert.Equal(t, 0, repo.createCalls)
 }

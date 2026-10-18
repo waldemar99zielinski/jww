@@ -21,6 +21,9 @@ and the 3 most recent transactions. Standard container/view structure (see `page
   percentages relative to the largest category) lives in `index.tsx`, not in
   `components/CategoryBreakdown.tsx` — that component only renders pre-computed values.
 - Sources data via `useSummary` and `useTransactions` (`hooks/`) — never fetches directly.
+- `useSummary` is called **without `user_id`**, so the balance/income/expense totals are
+  household-wide (no user scope). The `useTransactions` query on this page still scopes to the
+  signed-in user (`user_id: user?.id`), so the recent list and category breakdown stay per-user.
 
 ## Testing
 

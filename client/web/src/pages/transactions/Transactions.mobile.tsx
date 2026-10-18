@@ -27,6 +27,7 @@ export default function TransactionsMobile(props: TransactionsViewProps) {
                 key={transaction.id}
                 transaction={transaction}
                 subtitle={`${transaction.category_name} · ${formatTime(transaction.created_at)}`}
+                to={`/transactions/${transaction.id}`}
               />
             ))}
           </ul>

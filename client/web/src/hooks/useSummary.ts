@@ -5,6 +5,5 @@ export function useSummary(params: SummaryParams) {
   return useQuery({
     queryKey: ['summary', params],
     queryFn: () => getSummary(params),
-    enabled: params.user_id !== undefined,
   })
 }

@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import HomePage from '@/pages/home/index'
 import { server } from '@/test/server'
-import { fixtureUser } from '@/test/fixtures'
+import { fixtureSummary, fixtureUser } from '@/test/fixtures'
 import { createTestStore, renderWithProviders } from '@/test/renderWithProviders'
 import { normalizeText } from '@/test/normalizeText'
 import { formatAmount, formatSignedAmount } from '@/lib/currency'
@@ -34,6 +34,21 @@ describe('HomePage', () => {
     // Recent transactions list shows both mocked transactions.
     expect(await findByText('Weekly shop')).toBeInTheDocument()
     expect(await findByText('October salary')).toBeInTheDocument()
+  })
+
+  it('requests the summary without a user filter', async () => {
+    const summaryUserIds: Array<string | null> = []
+    server.use(
+      http.get('*/api/v1/summary', ({ request }) => {
+        summaryUserIds.push(new URL(request.url).searchParams.get('user_id'))
+        return HttpResponse.json({ data: fixtureSummary })
+      }),
+    )
+
+    const { findByText } = renderHome()
+    await findByText(fixtureUser.display_name)
+
+    expect(summaryUserIds).toContain(null)
   })
 
   it('shows empty states when there are no transactions this month', async () => {

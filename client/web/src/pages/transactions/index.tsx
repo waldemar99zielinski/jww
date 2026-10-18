@@ -28,7 +28,7 @@ export default function TransactionsPage() {
   )
   const hasValidDateRange = !dateFrom || !dateTo || dateFrom <= dateTo
   const transactionsQuery = useTransactions({
-    user_id: userFilter || user?.id,
+    user_id: userFilter || undefined,
     category_id: categoryFilter || undefined,
     type: filter === 'all' ? undefined : filter,
     created_from: hasValidDateRange && dateFrom ? new Date(`${dateFrom}T00:00:00`).toISOString() : undefined,
@@ -45,7 +45,8 @@ export default function TransactionsPage() {
 
   const grouped = useMemo(() => {
     const byDay = new Map<string, TransactionDto[]>()
-    for (const transaction of [...transactions].reverse()) {
+    // Keep the server's order (newest-first): bucket rows in the order they arrive, no re-sorting.
+    for (const transaction of transactions) {
       const bucket = formatDayBucket(transaction.created_at)
       const existing = byDay.get(bucket) ?? []
       existing.push(transaction)

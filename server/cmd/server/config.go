@@ -2,7 +2,7 @@ package main
 
 import (
 	"jww/internal/adapter/frankfurter"
-	"jww/internal/adapter/security"
+	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/adapter/storage"
 	"jww/internal/infrastructure/database"
 	"jww/internal/infrastructure/http_server"
@@ -16,7 +16,7 @@ import (
 type Config struct {
 	Http        http_server.Config
 	Database    database.Config
-	Auth        security.Config
+	JWT         jwtadapter.Config
 	Logger      logger.Config
 	Scheduler   scheduler.Config
 	Frankfurter frankfurter.Config
@@ -32,7 +32,7 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	authConfig, err := security.LoadConfig()
+	jwtConfig, err := jwtadapter.LoadConfig()
 	if err != nil {
 		return Config{}, err
 	}
@@ -55,7 +55,7 @@ func LoadConfig() (Config, error) {
 	return Config{
 		Http:        httpConfig,
 		Database:    databaseConfig,
-		Auth:        authConfig,
+		JWT:         jwtConfig,
 		Logger:      loggerConfig,
 		Scheduler:   schedulerConfig,
 		Frankfurter: frankfurterConfig,

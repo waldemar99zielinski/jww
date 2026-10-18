@@ -14,6 +14,7 @@ import (
 
 	"jww/internal/adapter/schema"
 	"jww/internal/adapter/security"
+	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/domain"
 	"jww/internal/infrastructure/http_server/kernel"
 	authrouter "jww/internal/infrastructure/http_server/routers/auth"
@@ -45,7 +46,7 @@ func (f *fakeRepository) GetByUsername(_ domain.AppContext, username string, _ .
 }
 
 // This package uses the REAL security.Argon2PasswordHasher and
-// security.JwtTokenService (not fakes) so get_me can be exercised behind the
+// jwt.AccessTokenService (not a fake) so get_me can be exercised behind the
 // REAL kernel.RequireAuth middleware with a genuinely signed token — the
 // only way to reach the "authenticated user is on the request context" path
 // without reimplementing kernel's unexported context helpers.
@@ -58,7 +59,7 @@ func newTestDeps(t *testing.T) (*kernel.Deps, *fakeRepository, string) {
 	u := domain.User{ID: uuid.New(), Username: "wozi", PasswordHash: hash, DisplayName: "Wozi"}
 	repo := &fakeRepository{byUsername: map[string]domain.User{u.Username: u}}
 
-	tokenService := security.NewJwtTokenService(security.Config{
+	tokenService := jwtadapter.NewAccessTokenService(jwtadapter.Config{
 		SecretKey: "test-secret-key-not-for-production", Algorithm: "HS256", AccessTokenExpireMinutes: 60,
 	})
 

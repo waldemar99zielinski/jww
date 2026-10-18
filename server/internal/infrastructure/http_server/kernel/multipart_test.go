@@ -67,6 +67,44 @@ func TestReadSingleMultipartFile(t *testing.T) {
 		assert.Equal(t, "application/octet-stream", file.MediaType)
 	})
 
+	t.Run("a generic or empty type is inferred from the extension", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			filename    string
+			contentType string
+			want        string
+		}{
+			{"dng, no type", "IMG_0001.DNG", "", "image/dng"},
+			{"dng, octet-stream", "IMG_0001.dng", "application/octet-stream", "image/dng"},
+			{"heic, no type", "IMG_0002.heic", "", "image/heic"},
+			{"heif, octet-stream", "IMG_0003.heif", "application/octet-stream", "image/heif"},
+			{"jpeg, no type", "receipt.jpeg", "", "image/jpeg"},
+			{"pdf, octet-stream", "statement.pdf", "application/octet-stream", "application/pdf"},
+			{"unknown extension stays octet-stream", "archive.zip", "", "application/octet-stream"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				req := newMultipartRequest(t, func(w *multipart.Writer) {
+					writeFilePart(t, w, "file", tt.filename, tt.contentType, "bytes")
+				})
+
+				file, err := ReadSingleMultipartFile(req)
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, file.MediaType)
+			})
+		}
+	})
+
+	t.Run("an explicit type is never overridden by the extension", func(t *testing.T) {
+		req := newMultipartRequest(t, func(w *multipart.Writer) {
+			writeFilePart(t, w, "file", "photo.dng", "image/jpeg", "bytes")
+		})
+
+		file, err := ReadSingleMultipartFile(req)
+		require.NoError(t, err)
+		assert.Equal(t, "image/jpeg", file.MediaType)
+	})
+
 	t.Run("path components are stripped from the filename", func(t *testing.T) {
 		req := newMultipartRequest(t, func(w *multipart.Writer) {
 			writeFilePart(t, w, "file", "../../etc/passwd", "text/plain", "x")

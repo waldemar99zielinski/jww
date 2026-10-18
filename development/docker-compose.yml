@@ -16,5 +16,46 @@ services:
       timeout: 5s
       retries: 10
 
+  # Private S3-compatible object storage, shared by any feature that stores
+  # files (transaction attachments live under the "transaction-attachments/"
+  # folder inside the shared `jww` bucket).
+  minio:
+    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jww}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jww-development}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot bucket initializer: creates the shared `jww` bucket and keeps it
+  # private. The server never creates buckets at startup. It reuses the MinIO
+  # image, which bundles `mc`, so the stack needs only one image.
+  minio-init:
+    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jww}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jww-development}
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do echo 'waiting for minio'; sleep 2; done;
+      mc mb --ignore-existing local/jww;
+      mc anonymous set none local/jww;
+      echo 'minio bucket ready';
+      "
+
 volumes:
   pgsql-data:
+  minio-data:

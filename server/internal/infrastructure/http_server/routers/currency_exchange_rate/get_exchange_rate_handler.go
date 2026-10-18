@@ -29,7 +29,7 @@ func getExchangeRateHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		rate, err := deps.CurrencyExchangeRateWorkflow.GetByCurrencies(appCtx, fromCode, toCode, asOf.Time())
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusOK, schema.ExchangeRateToResponse(*rate))

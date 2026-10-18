@@ -1,6 +1,8 @@
 package kernel
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -22,7 +24,9 @@ import (
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flowID := ensureFlowID(r)
-		r = r.WithContext(withFlowID(r.Context(), flowID))
+		ctx := withFlowID(r.Context(), flowID)
+		ctx = withRequestErrorState(ctx)
+		r = r.WithContext(ctx)
 		w.Header().Set(flowIDHeader, flowID)
 
 		wrapped := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
@@ -32,16 +36,21 @@ func RequestLogger(next http.Handler) http.Handler {
 
 		appCtx := RequestContext(r)
 		status := wrapped.Status()
-		httpLog.WithContext(appCtx).LogAttrs(
-			r.Context(),
-			levelForStatus(status),
-			"request completed",
+		attrs := []slog.Attr{
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", status),
 			slog.Int("response_bytes", wrapped.BytesWritten()),
 			slog.Duration("duration", time.Since(start)),
-		)
+		}
+		if err := requestError(r); err != nil {
+			attrs = append(attrs,
+				slog.String("error", err.Error()),
+				slog.String("error_type", fmt.Sprintf("%T", err)),
+				slog.String("error_chain", formatErrorChain(err)),
+			)
+		}
+		httpLog.WithContext(appCtx).LogAttrs(r.Context(), levelForStatus(status), "request completed", attrs...)
 	})
 }
 
@@ -52,6 +61,8 @@ func Recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
+				recoveredErr := fmt.Errorf("panic: %v", rec)
+				recordRequestError(r, recoveredErr)
 				appCtx := RequestContext(r)
 				httpLog.WithContext(appCtx).LogAttrs(
 					r.Context(),
@@ -67,6 +78,17 @@ func Recoverer(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+func formatErrorChain(err error) string {
+	if err == nil {
+		return ""
+	}
+	chain := err.Error()
+	for cause := errors.Unwrap(err); cause != nil; cause = errors.Unwrap(cause) {
+		chain += ": caused by: " + cause.Error()
+	}
+	return chain
 }
 
 // defaultMaxBodyBytes caps a request body when Deps.MaxBodyBytes isn't set
@@ -147,12 +169,12 @@ func RequireAuth(deps *Deps) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, ok := bearerToken(r)
 			if !ok {
-				WriteError(w, domain.NewAuthenticationError())
+				WriteError(w, r, domain.NewAuthenticationError())
 				return
 			}
 			user, err := deps.AuthService.Authenticate(RequestContext(r), token)
 			if err != nil {
-				WriteError(w, err)
+				WriteError(w, r, err)
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(withUser(r.Context(), user)))

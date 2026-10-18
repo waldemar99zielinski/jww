@@ -19,7 +19,7 @@ func getDraftHandler(deps *kernel.Deps) http.HandlerFunc {
 		}
 		attachment, err := deps.TransactionAttachmentService.GetDraft(appCtx, attachmentID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteOK(w, schema.TransactionAttachmentToResponse(*attachment))

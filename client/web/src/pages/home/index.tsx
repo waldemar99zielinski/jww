@@ -24,7 +24,6 @@ export default function HomePage() {
     period_start: periodStart,
     period_end: periodEnd,
     currency_code: currency?.code ?? 'PLN',
-    user_id: user?.id,
   })
 
   const transactionsQuery = useTransactions({

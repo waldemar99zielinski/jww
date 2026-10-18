@@ -20,7 +20,7 @@ func getCategoryHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		c, err := deps.TransactionCategoryService.GetByID(appCtx, categoryID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusOK, schema.TransactionCategoryToResponse(*c))

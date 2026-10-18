@@ -24,7 +24,8 @@ architecture" sections for the full pattern — summary:
 - `home/` — dashboard / home screen.
 - `login/` — the one non-split page.
 - `settings/` — settings root + `categories/` and `currencies/` sub-pages.
-- `transactions/` — transaction history + filters.
+- `transactions/` — transaction history + filters, plus `transactions/detail/` for viewing one
+  transaction.
 
 ## Adding a new page
 

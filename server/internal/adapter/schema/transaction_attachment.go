@@ -21,6 +21,35 @@ type TransactionAttachmentResponse struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+type TransactionAttachmentGrantRequest struct {
+	Purpose string `json:"purpose"`
+}
+
+type TransactionAttachmentGrantResponse struct {
+	Grant string `json:"grant"`
+}
+
+type TransactionAttachmentWithPreviewGrantResponse struct {
+	TransactionAttachmentResponse
+	PreviewGrant *string `json:"preview_grant"`
+}
+
+func TransactionAttachmentsWithPreviewGrantsToResponse(attachments []domain.TransactionAttachment, grants map[uuid.UUID]string) []TransactionAttachmentWithPreviewGrantResponse {
+	out := make([]TransactionAttachmentWithPreviewGrantResponse, len(attachments))
+	for i, attachment := range attachments {
+		var previewGrant *string
+		if grant, ok := grants[attachment.ID]; ok {
+			grantCopy := grant
+			previewGrant = &grantCopy
+		}
+		out[i] = TransactionAttachmentWithPreviewGrantResponse{
+			TransactionAttachmentResponse: TransactionAttachmentToResponse(attachment),
+			PreviewGrant:                  previewGrant,
+		}
+	}
+	return out
+}
+
 func TransactionAttachmentToResponse(a domain.TransactionAttachment) TransactionAttachmentResponse {
 	return TransactionAttachmentResponse{
 		ID:               a.ID,

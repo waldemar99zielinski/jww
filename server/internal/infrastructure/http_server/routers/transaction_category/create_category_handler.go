@@ -23,7 +23,7 @@ func createCategoryHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		c, err := deps.TransactionCategoryService.Create(appCtx, req.Type, req.Name, req.SortOrder)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusCreated, schema.TransactionCategoryToResponse(*c))

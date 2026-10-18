@@ -163,19 +163,45 @@ func TestPostgresTransactionRepository_List_FiltersByExplicitFields(t *testing.T
 		assert.NotContains(t, ids, oldExpense.ID)
 	})
 
-	t.Run("no filter returns everything newest first", func(t *testing.T) {
+	t.Run("no filter returns everything by id descending", func(t *testing.T) {
 		list, err := repo.List(appCtx, nil, uow)
 		require.NoError(t, err)
 		require.Len(t, list, 3)
 		assert.Equal(t, []int64{recentIncome.ID, recentExpense.ID, oldExpense.ID}, idsOf(list))
 	})
 
-	t.Run("empty filter returns everything newest first", func(t *testing.T) {
+	t.Run("empty filter returns everything by id descending", func(t *testing.T) {
 		list, err := repo.List(appCtx, &transaction.Filter{}, uow)
 		require.NoError(t, err)
 		require.Len(t, list, 3)
 		assert.Equal(t, []int64{recentIncome.ID, recentExpense.ID, oldExpense.ID}, idsOf(list))
 	})
+}
+
+func TestPostgresTransactionRepository_List_DefaultsToIDDescending(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	appCtx := pgtest.AppContext(ctx)
+	uow := pgtest.BeginRollback(t, pool, appCtx)
+	fx := seedTransactionFixtures(t, appCtx, uow, "ZTG", domain.TransactionCategoryTypeExpense)
+	repo := gateway.NewPostgresTransactionRepository(pool)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	// Created first → lower id, but the newer created_at.
+	lowerIDNewerTime, err := repo.Create(appCtx, domain.TransactionTypeExpense, 1000, fx.currency, fx.category, fx.user,
+		domain.TransactionSourceManual, now, "Lower id, newer timestamp", "", uow)
+	require.NoError(t, err)
+	// Created second → higher id, but an older created_at, so id-descending
+	// and created_at-descending disagree.
+	higherIDOlderTime, err := repo.Create(appCtx, domain.TransactionTypeExpense, 2000, fx.currency, fx.category, fx.user,
+		domain.TransactionSourceManual, now.Add(-time.Hour), "Higher id, older timestamp", "", uow)
+	require.NoError(t, err)
+
+	list, err := repo.List(appCtx, nil, uow)
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+	assert.Equal(t, []int64{higherIDOlderTime.ID, lowerIDNewerTime.ID}, idsOf(list),
+		"default order must follow id, not created_at")
 }
 
 func idsOf(list []domain.Transaction) []int64 {
@@ -201,6 +227,9 @@ func TestPostgresTransactionRepository_Update(t *testing.T) {
 	updated := *created
 	updated.Amount = 2000
 	updated.Name = "Updated name"
+	// created_at is the transaction's date and is mutable.
+	newCreatedAt := created.CreatedAt.Add(-72 * time.Hour).Truncate(time.Microsecond)
+	updated.CreatedAt = newCreatedAt
 	require.NoError(t, repo.Update(appCtx, updated, uow))
 
 	got, err := repo.GetByID(appCtx, created.ID, uow)
@@ -208,6 +237,7 @@ func TestPostgresTransactionRepository_Update(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, domain.Money(2000), got.Amount)
 	assert.Equal(t, "Updated name", got.Name)
+	assert.WithinDuration(t, newCreatedAt, got.CreatedAt, time.Microsecond)
 }
 
 func TestPostgresTransactionRepository_Delete(t *testing.T) {

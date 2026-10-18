@@ -97,9 +97,19 @@ func (s *S3Store) Put(ctx domain.AppContext, ref object_storage.Ref, body io.Rea
 // Open returns a streaming reader for ref, at the exact stored version when one
 // is known.
 func (s *S3Store) Open(ctx domain.AppContext, ref object_storage.Ref) (object_storage.Stream, error) {
+	return s.open(ctx, ref, nil)
+}
+
+func (s *S3Store) OpenRange(ctx domain.AppContext, ref object_storage.Ref, byteRange object_storage.ByteRange) (object_storage.Stream, error) {
+	rangeHeader := fmt.Sprintf("bytes=%d-%d", byteRange.Start, byteRange.End)
+	return s.open(ctx, ref, &rangeHeader)
+}
+
+func (s *S3Store) open(ctx domain.AppContext, ref object_storage.Ref, rangeHeader *string) (object_storage.Stream, error) {
 	in := &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(ref.Key),
+		Range:  rangeHeader,
 	}
 	if ref.Version != "" {
 		in.VersionId = aws.String(ref.Version)

@@ -27,7 +27,7 @@ func attachAttachmentHandler(deps *kernel.Deps) http.HandlerFunc {
 			return
 		}
 		if err := deps.TransactionWorkflow.Attach(appCtx, transactionID, attachmentID); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteNoContent(w)
@@ -52,7 +52,7 @@ func uploadAttachmentHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		attachment, err := deps.TransactionWorkflow.UploadAttachment(appCtx, transactionID, file.Filename, file.MediaType, file)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		if err := file.Finish(); err != nil {
@@ -75,7 +75,7 @@ func listAttachmentsHandler(deps *kernel.Deps) http.HandlerFunc {
 		}
 		t, err := deps.TransactionWorkflow.Get(appCtx, transactionID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteOK(w, schema.TransactionAttachmentsToResponse(t.Attachments))
@@ -98,7 +98,7 @@ func downloadAttachmentHandler(deps *kernel.Deps) http.HandlerFunc {
 		}
 		attachment, stream, err := deps.TransactionAttachmentService.OpenForTransaction(appCtx, transactionID, attachmentID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
@@ -121,7 +121,7 @@ func deleteAttachmentHandler(deps *kernel.Deps) http.HandlerFunc {
 			return
 		}
 		if err := deps.TransactionAttachmentService.DeleteForTransaction(appCtx, transactionID, attachmentID); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteNoContent(w)

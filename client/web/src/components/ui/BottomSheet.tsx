@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type TouchEvent } from 'react'
 import { IconClose } from '@/components/icons'
+import { useScrollLock } from '@/hooks/useScrollLock'
 import { IconButton } from './IconButton'
 
 export interface BottomSheetProps {
@@ -48,14 +49,8 @@ export function BottomSheet({ open, onClose, title, description, footer, childre
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [dismiss, open])
 
-  useEffect(() => {
-    if (!open) return
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [open])
+  // Freeze the page behind the sheet — including the desktop shell's scrolling <main>.
+  useScrollLock(open)
 
   function handleTouchStart(event: TouchEvent) {
     dragStartY.current = event.touches[0].clientY

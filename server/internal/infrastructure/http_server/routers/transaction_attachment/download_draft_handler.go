@@ -19,7 +19,7 @@ func downloadDraftHandler(deps *kernel.Deps) http.HandlerFunc {
 		}
 		attachment, stream, err := deps.TransactionAttachmentService.OpenDraft(appCtx, attachmentID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		// The response can be arbitrarily large; clear the inherited write

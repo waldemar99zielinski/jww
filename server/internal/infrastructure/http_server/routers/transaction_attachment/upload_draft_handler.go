@@ -23,7 +23,7 @@ func uploadDraftHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		attachment, err := deps.TransactionAttachmentService.UploadDraft(appCtx, file.Filename, file.MediaType, file)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		if err := file.Finish(); err != nil {

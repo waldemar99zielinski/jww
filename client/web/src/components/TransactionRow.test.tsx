@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import type { TransactionDto } from '@/api/types'
 import { TransactionRow } from '@/components/TransactionRow'
 
@@ -15,6 +16,7 @@ const baseTransaction: TransactionDto = {
   name: 'Weekly shop',
   created_at: '2026-10-10T09:30:00Z',
   description: '',
+  attachments: [],
 }
 
 describe('TransactionRow', () => {
@@ -62,5 +64,17 @@ describe('TransactionRow', () => {
     )
 
     expect(screen.getByText('Groceries')).toBeInTheDocument()
+  })
+
+  it('links the whole row to its detail route when `to` is provided', () => {
+    render(
+      <MemoryRouter>
+        <ul>
+          <TransactionRow transaction={baseTransaction} subtitle="Today" to="/transactions/1" />
+        </ul>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /weekly shop/i })).toHaveAttribute('href', '/transactions/1')
   })
 })

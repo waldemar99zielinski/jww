@@ -15,7 +15,13 @@ import (
 type recordingStore struct {
 	puts    []Ref
 	opens   []Ref
+	ranges  []Ref
 	deletes []Ref
+}
+
+func (s *recordingStore) OpenRange(_ domain.AppContext, ref Ref, _ ByteRange) (Stream, error) {
+	s.ranges = append(s.ranges, ref)
+	return Stream{Body: io.NopCloser(bytes.NewReader(nil))}, nil
 }
 
 func (s *recordingStore) Put(_ domain.AppContext, ref Ref, _ io.Reader, _ string) (Stored, error) {
@@ -47,10 +53,12 @@ func TestNamespaced_PrefixesEveryKey(t *testing.T) {
 
 	_, _ = scoped.Put(domain.AppContext{}, Ref{Key: "abc"}, bytes.NewReader(nil), "text/plain")
 	_, _ = scoped.Open(domain.AppContext{}, Ref{Key: "abc", Version: "v1"})
+	_, _ = scoped.OpenRange(domain.AppContext{}, Ref{Key: "abc", Version: "v1"}, ByteRange{Start: 0, End: 0})
 	_ = scoped.Delete(domain.AppContext{}, Ref{Key: "abc"})
 
 	assert.Equal(t, []string{"transaction-attachments/abc"}, keyOf(base.puts))
 	assert.Equal(t, []string{"transaction-attachments/abc"}, keyOf(base.opens))
+	assert.Equal(t, []string{"transaction-attachments/abc"}, keyOf(base.ranges))
 	assert.Equal(t, []string{"transaction-attachments/abc"}, keyOf(base.deletes))
 	assert.Equal(t, "v1", base.opens[0].Version, "the version must be preserved untouched")
 }

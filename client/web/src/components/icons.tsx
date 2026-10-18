@@ -385,3 +385,43 @@ export function IconStar(props: IconProps) {
     </Icon>
   )
 }
+
+/** Open arc meant to be paired with `animate-spin` for an in-progress indicator. */
+export function IconSpinner(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+    </Icon>
+  )
+}
+
+/** Horizontal "more actions" ellipsis. */
+export function IconDots(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </Icon>
+  )
+}
+
+export function IconEdit(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0-3-3L5 17v3Z" />
+      <path d="M13.5 6.5l4 4" />
+    </Icon>
+  )
+}
+
+export function IconTrash(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M6 7l1 12.5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5L18 7" />
+      <path d="M9 7V4h6v3" />
+    </Icon>
+  )
+}

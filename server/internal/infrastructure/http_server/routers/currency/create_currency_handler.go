@@ -23,7 +23,7 @@ func createCurrencyHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		c, err := deps.CurrencyService.Create(appCtx, req.Code, req.Name, req.IsBase)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusCreated, schema.CurrencyToResponse(*c))

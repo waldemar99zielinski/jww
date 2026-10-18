@@ -18,6 +18,29 @@ type flowIDKey struct{}
 
 type userKey struct{}
 
+type requestErrorKey struct{}
+
+type requestErrorState struct {
+	err error
+}
+
+func withRequestErrorState(ctx context.Context) context.Context {
+	return context.WithValue(ctx, requestErrorKey{}, &requestErrorState{})
+}
+
+func recordRequestError(r *http.Request, err error) {
+	if state, ok := r.Context().Value(requestErrorKey{}).(*requestErrorState); ok {
+		state.err = err
+	}
+}
+
+func requestError(r *http.Request) error {
+	if state, ok := r.Context().Value(requestErrorKey{}).(*requestErrorState); ok {
+		return state.err
+	}
+	return nil
+}
+
 // withUser stores the authenticated user on the request context so
 // RequestContext exposes it to handlers and the logger.
 func withUser(ctx context.Context, user *domain.User) context.Context {

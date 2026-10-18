@@ -15,11 +15,11 @@ func deleteCurrencyHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		c, err := deps.CurrencyService.GetByCode(appCtx, code)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		if err := deps.CurrencyService.Delete(appCtx, *c); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteNoContent(w)

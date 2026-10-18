@@ -10,6 +10,7 @@ import { restoreSession } from '@/store/authSlice'
 const LoginPage = lazy(() => import('@/pages/login/LoginPage'))
 const HomePage = lazy(() => import('@/pages/home'))
 const TransactionsPage = lazy(() => import('@/pages/transactions'))
+const TransactionDetailPage = lazy(() => import('@/pages/transactions/detail'))
 const AddTransactionPage = lazy(() => import('@/pages/add'))
 const BudgetsPage = lazy(() => import('@/pages/budgets'))
 const SettingsPage = lazy(() => import('@/pages/settings'))
@@ -55,6 +56,7 @@ export function App() {
               <Route element={<AppShell />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
+                <Route path="/transactions/:id" element={<TransactionDetailPage />} />
                 <Route path="/add" element={<AddTransactionPage />} />
                 <Route path="/budgets" element={<BudgetsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />

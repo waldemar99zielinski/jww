@@ -17,7 +17,7 @@ func deleteDraftHandler(deps *kernel.Deps) http.HandlerFunc {
 			return
 		}
 		if err := deps.TransactionAttachmentService.DeleteDraft(appCtx, attachmentID); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteNoContent(w)

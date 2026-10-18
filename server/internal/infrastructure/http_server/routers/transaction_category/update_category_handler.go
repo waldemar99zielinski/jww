@@ -29,7 +29,7 @@ func updateCategoryHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		existing, err := deps.TransactionCategoryService.GetByID(appCtx, categoryID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		updated := *existing
@@ -37,7 +37,7 @@ func updateCategoryHandler(deps *kernel.Deps) http.HandlerFunc {
 		updated.Active = req.Active
 		updated.SortOrder = req.SortOrder
 		if _, err := deps.TransactionCategoryService.Update(appCtx, updated); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusOK, schema.TransactionCategoryToResponse(updated))

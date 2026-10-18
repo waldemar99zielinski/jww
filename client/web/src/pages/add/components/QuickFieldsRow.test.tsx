@@ -4,12 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { QuickFieldsRow } from './QuickFieldsRow'
 
 describe('QuickFieldsRow', () => {
-  it('shows the date label and "Attach" when there is no receipt, and fires the right callbacks', async () => {
+  it('shows the date label and "Attach" when there is no attachment, and fires the right callbacks', async () => {
     const user = userEvent.setup()
     const onToggleDate = vi.fn()
-    const onOpenReceipt = vi.fn()
+    const onOpenAttachment = vi.fn()
     render(
-      <QuickFieldsRow dateLabel="Today" dateOpen={false} onToggleDate={onToggleDate} hasReceipt={false} onOpenReceipt={onOpenReceipt} />,
+      <QuickFieldsRow dateLabel="Today" dateOpen={false} onToggleDate={onToggleDate} hasAttachment={false} onOpenAttachment={onOpenAttachment} />,
     )
 
     expect(screen.getByText('Today')).toBeInTheDocument()
@@ -19,11 +19,11 @@ describe('QuickFieldsRow', () => {
     expect(onToggleDate).toHaveBeenCalledTimes(1)
 
     await user.click(screen.getByText('Attach'))
-    expect(onOpenReceipt).toHaveBeenCalledTimes(1)
+    expect(onOpenAttachment).toHaveBeenCalledTimes(1)
   })
 
-  it('shows "Attached" once a receipt exists', () => {
-    render(<QuickFieldsRow dateLabel="Today" dateOpen={false} onToggleDate={vi.fn()} hasReceipt onOpenReceipt={vi.fn()} />)
+  it('shows "Attached" once an attachment exists', () => {
+    render(<QuickFieldsRow dateLabel="Today" dateOpen={false} onToggleDate={vi.fn()} hasAttachment onOpenAttachment={vi.fn()} />)
 
     expect(screen.getByText('Attached')).toBeInTheDocument()
   })

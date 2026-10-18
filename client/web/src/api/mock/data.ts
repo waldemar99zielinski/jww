@@ -2,8 +2,11 @@ import type {
   CurrencyDto,
   SummaryDto,
   SummaryPeriod,
+  TransactionAttachmentDto,
   TransactionCategoryDto,
+  TransactionDetailsDto,
   TransactionDto,
+  TransactionPrefillDto,
   TransactionSource,
   TransactionType,
   UserDto,
@@ -65,6 +68,10 @@ const categories: TransactionCategoryDto[] = [
 ]
 
 let nextTransactionId = 1000
+let nextAttachmentId = 1
+
+/** Unattached drafts live here until a transaction links them (transaction_id stays null). */
+const attachments: TransactionAttachmentDto[] = []
 
 function transaction(input: {
   type: TransactionType
@@ -91,6 +98,7 @@ function transaction(input: {
     name: input.name ?? input.description,
     created_at: daysAgo(input.daysAgo, input.hour),
     description: input.description,
+    attachments: [],
   }
 }
 
@@ -134,6 +142,62 @@ const transactions: TransactionDto[] = [
   transaction({ type: 'income', amount: '120.00', categoryId: 'cat-freelance', daysAgo: 12, hour: 11, description: 'Consulting call', source: 'manual' }),
   transaction({ type: 'expense', amount: '58.30', categoryId: 'cat-health', daysAgo: 12, hour: 15, description: 'Pharmacy' }),
 ]
+
+/** Mirrors the server's previewable media types (transaction_attachment.previewableMediaType). */
+const PREVIEWABLE_MEDIA_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+  'image/heic',
+  'image/heif',
+  'image/dng',
+  'image/x-adobe-dng',
+  'application/pdf',
+])
+
+// A few demo attachments on the "Weekly shopping" transaction so the detail screen's
+// preview/download affordances are visible in design mode (the server returns these from
+// GET /transactions/{id}, alongside a preview grant for the previewable ones).
+const demoTransaction = transactions[2]
+demoTransaction.attachments = [
+  {
+    id: 'design-attachment-1',
+    transaction_id: demoTransaction.id,
+    original_filename: 'receipt.jpg',
+    media_type: 'image/jpeg',
+    byte_size: 248_000,
+    created_at: demoTransaction.created_at,
+  },
+  {
+    id: 'design-attachment-2',
+    transaction_id: demoTransaction.id,
+    original_filename: 'statement.pdf',
+    media_type: 'application/pdf',
+    byte_size: 132_000,
+    created_at: demoTransaction.created_at,
+  },
+  {
+    id: 'design-attachment-3',
+    transaction_id: demoTransaction.id,
+    original_filename: 'invoice.csv',
+    media_type: 'text/csv',
+    byte_size: 1_200,
+    created_at: demoTransaction.created_at,
+  },
+]
+
+/** Attaches a design-mode preview grant to each previewable attachment, mirroring the server's GET detail response. */
+function withPreviewGrants(transaction: TransactionDto): TransactionDetailsDto {
+  return {
+    ...transaction,
+    attachments: transaction.attachments.map((attachment) => ({
+      ...attachment,
+      preview_grant: PREVIEWABLE_MEDIA_TYPES.has(attachment.media_type) ? `design-preview-grant-${attachment.id}` : null,
+    })),
+  }
+}
 
 let nextCategorySeq = 100
 
@@ -194,10 +258,49 @@ export const mockApi = {
         if (filters.created_to && t.created_at > filters.created_to) return false
         return true
       })
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .sort((a, b) => b.id - a.id)
+  },
+  getTransaction(id: number): TransactionDetailsDto {
+    const transaction = transactions.find((t) => t.id === id)
+    if (!transaction) throw new Error(`Unknown transaction: ${id}`)
+    return withPreviewGrants(transaction)
+  },
+  updateTransaction(
+    id: number,
+    input: {
+      type?: TransactionType
+      /** Whole minor units (cents); mirrors the DTO's decimal string. */
+      amount?: number
+      currency_code?: string
+      category_id?: string
+      user_id?: string
+      source?: TransactionSource
+      name?: string
+      description?: string
+      created_at?: string
+    },
+  ): TransactionDetailsDto {
+    const transaction = transactions.find((t) => t.id === id)
+    if (!transaction) throw new Error(`Unknown transaction: ${id}`)
+
+    if (input.type !== undefined) transaction.type = input.type
+    if (input.amount !== undefined) transaction.amount = (input.amount / 100).toFixed(2)
+    if (input.currency_code !== undefined) transaction.currency_code = input.currency_code
+    if (input.category_id !== undefined) {
+      transaction.category_id = input.category_id
+      transaction.category_name = categories.find((c) => c.id === input.category_id)?.name ?? 'Other'
+    }
+    if (input.user_id !== undefined) transaction.user_id = input.user_id
+    if (input.source !== undefined) transaction.source = input.source
+    if (input.name !== undefined) transaction.name = input.name
+    if (input.description !== undefined) transaction.description = input.description
+    if (input.created_at !== undefined) transaction.created_at = input.created_at
+
+    return withPreviewGrants(transaction)
   },
   createTransaction(input: {
     type: TransactionType
+    /** Whole minor units (cents); the DTO it returns carries the decimal string. */
     amount: number
     currency_code: string
     category_id: string
@@ -205,23 +308,68 @@ export const mockApi = {
     source: TransactionSource
     name: string
     description?: string
+    created_at?: string
+    attachment_ids?: string[]
   }): TransactionDto {
     const category = categories.find((c) => c.id === input.category_id)
     const transaction: TransactionDto = {
       id: nextTransactionId++,
       type: input.type,
-      amount: input.amount.toFixed(2),
+      // The wire sends cents (4250); the DTO mirrors the server's decimal string ("42.50").
+      amount: (input.amount / 100).toFixed(2),
       currency_code: input.currency_code,
       category_id: input.category_id,
       category_name: category?.name ?? 'Other',
       user_id: input.user_id,
       source: input.source,
       name: input.name,
-      created_at: new Date().toISOString(),
+      created_at: input.created_at ?? new Date().toISOString(),
       description: input.description ?? '',
+      attachments: [],
     }
+
+    const draftIds = new Set(input.attachment_ids ?? [])
+    transaction.attachments = attachments.filter((a) => a.transaction_id === null && draftIds.has(a.id))
+    transaction.attachments.forEach((a) => (a.transaction_id = transaction.id))
+
     transactions.push(transaction)
     return transaction
+  },
+
+  uploadDraftAttachment(file: File): TransactionAttachmentDto {
+    const attachment: TransactionAttachmentDto = {
+      id: `attachment-${nextAttachmentId++}`,
+      transaction_id: null,
+      original_filename: file.name,
+      media_type: file.type || 'application/octet-stream',
+      byte_size: file.size,
+      created_at: new Date().toISOString(),
+    }
+    attachments.push(attachment)
+    return attachment
+  },
+  deleteDraftAttachment(attachmentId: string): void {
+    const index = attachments.findIndex((a) => a.id === attachmentId && a.transaction_id === null)
+    if (index !== -1) attachments.splice(index, 1)
+  },
+  deleteTransactionAttachment(transactionId: number, attachmentId: string): void {
+    const transaction = transactions.find((t) => t.id === transactionId)
+    if (transaction) transaction.attachments = transaction.attachments.filter((a) => a.id !== attachmentId)
+    const index = attachments.findIndex((a) => a.id === attachmentId)
+    if (index !== -1) attachments.splice(index, 1)
+  },
+  downloadAttachment(): Blob {
+    return new Blob(['design-mode attachment bytes'], { type: 'application/octet-stream' })
+  },
+  extractTransactionPrefill(attachmentId: string): TransactionPrefillDto {
+    return {
+      attachment_id: attachmentId,
+      type: { value: 'expense', confidence: 0.9 },
+      amount: { value: '24,90', confidence: 0.95, source: 'total line' },
+      name: { value: 'Lidl groceries', confidence: 0.8, source: 'merchant header' },
+      category_hint: { value: 'Groceries', confidence: 0.85 },
+      duration_ms: 1400,
+    }
   },
 
   getSummary(params: { period_end: string; currency_code: string; period?: SummaryPeriod; period_start?: string }): SummaryDto {

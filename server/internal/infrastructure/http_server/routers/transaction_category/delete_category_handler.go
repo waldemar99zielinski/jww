@@ -19,11 +19,11 @@ func deleteCategoryHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		c, err := deps.TransactionCategoryService.GetByID(appCtx, categoryID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		if err := deps.TransactionCategoryService.Delete(appCtx, *c); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteNoContent(w)

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"jww/internal/adapter/security"
+	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/domain"
 	"jww/internal/service/auth"
 	"jww/internal/service/unit_of_work"
@@ -211,7 +212,7 @@ func TestIsAttachmentUploadRoute(t *testing.T) {
 		{http.MethodGet, "/api/v1/transaction-attachments", false},
 		{http.MethodPost, "/api/v1/transactions", false},
 		{http.MethodPost, "/api/v1/transactions/42/attachments/7", false},
-		{http.MethodPost, "/api/v1/transactions/42/attachments/7/content", false},
+		{http.MethodPost, "/api/v1/transactions/42/attachments/7/download", false},
 		{http.MethodPut, "/api/v1/transactions/42/attachments/7", false},
 	}
 	for _, tt := range tests {
@@ -310,7 +311,7 @@ func TestRequestContext(t *testing.T) {
 // faked by hand (auth.UserRepository, deliberately narrower than
 // service/user.Repository — see internal/service/auth/auth.go), but the
 // PasswordHasher and TokenService are the real security adapters
-// (security.Argon2PasswordHasher, security.JwtTokenService) with a
+// (security.Argon2PasswordHasher, jwt.AccessTokenService) with a
 // throwaway secret — no real I/O, pure in-memory crypto, so this stays a
 // fast unit test while still proving RequireAuth against genuine JWT
 // signature/expiry checks rather than a hand-rolled stand-in for them.
@@ -333,7 +334,7 @@ func TestRequireAuth(t *testing.T) {
 	userID := uuid.New()
 	storedUser := &domain.User{ID: userID, Username: "alice", PasswordHash: "hash", DisplayName: "Alice"}
 	repo := &fakeUserRepository{usersByID: map[uuid.UUID]*domain.User{userID: storedUser}}
-	tokenSvc := security.NewJwtTokenService(security.Config{
+	tokenSvc := jwtadapter.NewAccessTokenService(jwtadapter.Config{
 		SecretKey:                throwawaySecret,
 		Algorithm:                "HS256",
 		AccessTokenExpireMinutes: 60,
@@ -391,7 +392,7 @@ func TestRequireAuth(t *testing.T) {
 	})
 
 	t.Run("token with an invalid signature is rejected", func(t *testing.T) {
-		wrongSecretSvc := security.NewJwtTokenService(security.Config{
+		wrongSecretSvc := jwtadapter.NewAccessTokenService(jwtadapter.Config{
 			SecretKey:                "a-different-secret",
 			Algorithm:                "HS256",
 			AccessTokenExpireMinutes: 60,

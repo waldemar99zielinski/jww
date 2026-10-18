@@ -1,8 +1,10 @@
 import type {
   CurrencyDto,
   SummaryDto,
+  TransactionAttachmentDto,
   TransactionCategoryDto,
   TransactionDto,
+  TransactionPrefillDto,
   UserDto,
 } from '@/api/types'
 import type { TokenResponse } from '@/api/auth'
@@ -37,6 +39,24 @@ export const fixtureIncomeCategories: TransactionCategoryDto[] = [
 
 export const fixtureCategories: TransactionCategoryDto[] = [...fixtureExpenseCategories, ...fixtureIncomeCategories]
 
+export const fixtureAttachment: TransactionAttachmentDto = {
+  id: 'attachment-1',
+  transaction_id: null,
+  original_filename: 'receipt.jpg',
+  media_type: 'image/jpeg',
+  byte_size: 7,
+  created_at: '2026-10-10T09:00:00Z',
+}
+
+export const fixturePrefill: TransactionPrefillDto = {
+  attachment_id: fixtureAttachment.id,
+  type: { value: 'expense', confidence: 0.9 },
+  amount: { value: '24,90', confidence: 0.95, source: 'total line' },
+  name: { value: 'Lidl groceries', confidence: 0.8, source: 'merchant header' },
+  category_hint: { value: 'Groceries', confidence: 0.85 },
+  duration_ms: 900,
+}
+
 export const fixtureTransactions: TransactionDto[] = [
   {
     id: 1,
@@ -49,7 +69,25 @@ export const fixtureTransactions: TransactionDto[] = [
     source: 'manual',
     name: 'Weekly shop',
     created_at: '2026-10-10T09:30:00Z',
-    description: '',
+    description: 'Milk, bread and coffee',
+    attachments: [
+      {
+        id: 'attachment-1',
+        transaction_id: 1,
+        original_filename: 'receipt.jpg',
+        media_type: 'image/jpeg',
+        byte_size: 20480,
+        created_at: '2026-10-10T09:31:00Z',
+      },
+      {
+        id: 'attachment-2',
+        transaction_id: 1,
+        original_filename: 'note.txt',
+        media_type: 'text/plain',
+        byte_size: 512,
+        created_at: '2026-10-10T09:32:00Z',
+      },
+    ],
   },
   {
     id: 2,
@@ -63,6 +101,7 @@ export const fixtureTransactions: TransactionDto[] = [
     name: 'October salary',
     created_at: '2026-10-01T08:00:00Z',
     description: '',
+    attachments: [],
   },
 ]
 

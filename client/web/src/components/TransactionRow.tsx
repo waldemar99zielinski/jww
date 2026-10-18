@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { TransactionDto } from '@/api/types'
 import { IconTag } from '@/components/icons'
 import { getCategoryVisual } from '@/lib/categoryVisuals'
@@ -7,16 +8,18 @@ import { formatSignedAmount } from '@/lib/currency'
 interface TransactionRowProps {
   transaction: TransactionDto
   subtitle: string
+  /** When set, the whole row becomes a link to that route (e.g. the transaction detail screen). */
+  to?: string
 }
 
-export function TransactionRow({ transaction, subtitle }: TransactionRowProps) {
+export function TransactionRow({ transaction, subtitle, to }: TransactionRowProps) {
   const { Icon, colorVar } = transaction.category_name
     ? getCategoryVisual(transaction.category_name)
     : { Icon: IconTag, colorVar: 'var(--accent)' }
   const title = transaction.name || transaction.description || transaction.category_name
 
-  return (
-    <li className="flex items-center gap-3 py-2">
+  const content = (
+    <>
       <span
         className="flex h-9 w-9 flex-none items-center justify-center rounded-xl category-tint"
         style={cssVars({ '--tint': colorVar })}
@@ -32,6 +35,21 @@ export function TransactionRow({ transaction, subtitle }: TransactionRowProps) {
       >
         {formatSignedAmount(Number(transaction.amount), transaction.type)}
       </span>
-    </li>
+    </>
   )
+
+  if (to) {
+    return (
+      <li>
+        <Link
+          to={to}
+          className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface-sunken"
+        >
+          {content}
+        </Link>
+      </li>
+    )
+  }
+
+  return <li className="flex items-center gap-3 py-2">{content}</li>
 }

@@ -67,7 +67,7 @@ func getSummaryHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		summary, err := deps.SummaryWorkflow.Generate(appCtx, period, periodEnd.Time(), currencyCode, periodStart, userID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteJSON(w, http.StatusOK, schema.SummaryToResponse(*summary))

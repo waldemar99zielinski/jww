@@ -207,8 +207,9 @@ survives a short drop instead of being destroyed by an unmount. See
   `manifest.webmanifest` with a JSON content type; keep the existing SPA rewrite to
   `index.html`; do not serve `sw.js` with a long-lived cache header, or updates cannot ship.
 
-App icon source art is `public/favicon.svg`; every PNG in `public/icons/` is generated from it —
-see `public/README.md` for the sizes and the replace-don't-generate rule.
+App icon source art is `public/icons/app-icon.svg` (plus `app-icon-maskable.svg`); every PNG in
+`public/icons/` is generated from those two — see `public/README.md` for the sizes, the tier
+transforms and the `scripts/generate-icons.mjs` rule (manual, never part of the build).
 
 ## Known gaps / placeholders
 

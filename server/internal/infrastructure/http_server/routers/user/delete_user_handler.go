@@ -19,11 +19,11 @@ func deleteUserHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		u, err := deps.UserService.GetByID(appCtx, userID)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		if err := deps.UserService.Delete(appCtx, *u); err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		kernel.WriteNoContent(w)

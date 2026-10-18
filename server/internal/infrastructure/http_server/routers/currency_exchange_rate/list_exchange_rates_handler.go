@@ -21,7 +21,7 @@ func listExchangeRatesHandler(deps *kernel.Deps) http.HandlerFunc {
 
 		rates, err := deps.CurrencyExchangeRateWorkflow.List(appCtx, filter)
 		if err != nil {
-			kernel.WriteError(w, err)
+			kernel.WriteError(w, r, err)
 			return
 		}
 		out := make([]schema.CurrencyExchangeRateResponse, len(rates))
