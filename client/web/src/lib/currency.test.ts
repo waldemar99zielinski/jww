@@ -13,6 +13,12 @@ describe('formatAmount', () => {
   it('formats a negative amount differently from its positive counterpart', () => {
     expect(formatAmount(-5)).not.toBe(formatAmount(5))
   })
+
+  it('uses the supplied currency instead of the PLN fallback', () => {
+    expect(formatAmount(10, 'EUR')).toContain('€')
+    expect(formatAmount(10, 'USD')).toContain('USD')
+    expect(formatAmount(10, 'EUR')).not.toBe(formatAmount(10, 'PLN'))
+  })
 })
 
 describe('formatSignedAmount', () => {

@@ -1,19 +1,24 @@
-import { lazy, useMemo, useState } from 'react'
+import { lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { attachmentPreviewUrl, downloadTransactionAttachment } from '@/api/attachments'
 import type { TransactionDetailsDto, TransactionSource, TransactionType } from '@/api/types'
+import { AttachmentPreview } from '@/components/AttachmentPreview'
 import { ResponsiveView } from '@/components/ResponsiveView'
-import { useDeleteTransactionAttachment } from '@/hooks/useAttachments'
+import { TransactionAttachmentPicker } from '@/components/TransactionAttachmentPicker'
+import type { SubTransactionListInput } from '@/components/SubTransactionList'
+import { useDeleteTransactionAttachment, useUploadTransactionAttachment } from '@/hooks/useAttachments'
 import { useCategories } from '@/hooks/useCategories'
 import { useDefaultCurrency } from '@/hooks/useDefaultCurrency'
-import { useTransaction, useUpdateTransaction } from '@/hooks/useTransactions'
+import { useCreateSubTransaction, useDeleteSubTransaction, useUpdateSubTransaction } from '@/hooks/useSubTransactions'
+import { useDeleteTransaction, useTransaction, useUpdateTransaction } from '@/hooks/useTransactions'
 import { useUsers } from '@/hooks/useUsers'
-import { amountToCents, decimalStringToAmountDisplay } from '@/lib/amount'
-import { formatSignedAmount } from '@/lib/currency'
+import { amountToCents, centsToAmountDisplay, decimalStringToAmountDisplay } from '@/lib/amount'
+import { formatAmount, formatSignedAmount } from '@/lib/currency'
 import { formatTime, toISODateTime, toLocalISODate } from '@/lib/dates'
+import { saveBlob } from '@/lib/download'
+import { previewKindFor } from '@/lib/previewKind'
 import { AttachmentActions } from './components/AttachmentActions'
-import { AttachmentPreview } from './components/AttachmentPreview'
-import { previewKindFor } from './previewKind'
+import { DeleteTransactionAction } from './components/DeleteTransactionAction'
 import type {
   TransactionAttachmentItem,
   TransactionDetailEditProps,
@@ -31,7 +36,7 @@ const SOURCE_LABELS: Record<TransactionSource, string> = { manual: 'Manual', rec
 function editFormValues(source: TransactionDetailsDto) {
   return {
     type: source.type,
-    amount: decimalStringToAmountDisplay(source.amount),
+    amount: centsToAmountDisplay(source.amount),
     currencyCode: source.currency_code,
     categoryId: source.category_id,
     name: source.name,
@@ -63,6 +68,13 @@ export default function TransactionDetailPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState(false)
   const deleteAttachment = useDeleteTransactionAttachment()
+  const uploadAttachment = useUploadTransactionAttachment()
+  const [attachmentPickerOpen, setAttachmentPickerOpen] = useState(false)
+  const [attachmentUploadsInFlight, setAttachmentUploadsInFlight] = useState(0)
+  const [attachmentUploadError, setAttachmentUploadError] = useState(false)
+  const deleteTransaction = useDeleteTransaction()
+  const [deleteTransactionOpen, setDeleteTransactionOpen] = useState(false)
+  const [deleteTransactionFailed, setDeleteTransactionFailed] = useState(false)
 
   // Edit mode. The form fields are seeded from the fetched transaction when the user enters edit
   // mode (and again on Reset); the read-only screen keeps reading straight from `transaction`.
@@ -79,6 +91,15 @@ export default function TransactionDetailPage() {
   const [moreOpen, setMoreOpen] = useState(false)
 
   const updateTransaction = useUpdateTransaction()
+
+  // Line items on an existing transaction save immediately, one CRUD call per row (analysis §4,
+  // UC6). Each mutation invalidates `['transactions']`, so the detail query refetches the server's
+  // recomputed parent amount; a failed call surfaces an inline error and never touches the rows.
+  const createSubTransaction = useCreateSubTransaction()
+  const updateSubTransaction = useUpdateSubTransaction()
+  const deleteSubTransaction = useDeleteSubTransaction()
+  const [subTransactionError, setSubTransactionError] = useState<string | null>(null)
+
   // Only fetched once the form is actually open — the read-only screen needs neither.
   const categoriesQuery = useCategories(type, true, editing)
   const categories = categoriesQuery.data ?? []
@@ -115,6 +136,73 @@ export default function TransactionDetailPage() {
     [transaction],
   )
 
+  // The loaded transaction's line items. While any exist the Amount field is server-derived
+  // (read-only); the container reads them straight off the fetched record, so a failed row
+  // mutation simply leaves the row unchanged.
+  const subTransactions = transaction?.sub_transactions ?? []
+  const hasSubTransactions = subTransactions.length > 0
+  const subTransactionItems = useMemo(
+    () =>
+      (transaction?.sub_transactions ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        label: item.label,
+        amount: formatAmount(item.amount / 100, transaction?.currency_code),
+      })),
+    [transaction?.sub_transactions, transaction?.currency_code],
+  )
+  const subTransactionsBusy =
+    createSubTransaction.isPending || updateSubTransaction.isPending || deleteSubTransaction.isPending
+
+  // A line-item add/edit/remove makes the server recompute the parent amount, and the detail query
+  // refetches it. While items exist the Amount field is read-only and must show that server value;
+  // this also carries the server's last computed amount across the moment the final item is removed
+  // and the field unlocks ("last computed value remains until edited", analysis §8). It only writes
+  // when items exist (or existed a render ago), so it never clobbers a value being typed into the
+  // editable field.
+  const hadSubTransactions = useRef(false)
+  useEffect(() => {
+    if (!editing || !transaction) return
+    const previouslyHadItems = hadSubTransactions.current
+    hadSubTransactions.current = hasSubTransactions
+    if (hasSubTransactions || previouslyHadItems) {
+      setAmount(centsToAmountDisplay(transaction.amount))
+    }
+  }, [editing, transaction, hasSubTransactions])
+
+  /** Adds one item: POST, then refetch so the parent's recomputed amount is what the screen shows. */
+  async function handleAddSubTransaction(input: SubTransactionListInput) {
+    if (!transaction) return
+    setSubTransactionError(null)
+    try {
+      await createSubTransaction.mutateAsync({ transactionId: transaction.id, input })
+    } catch {
+      setSubTransactionError("Couldn't add that item — try again.")
+    }
+  }
+
+  /** Edits one item: PATCH. On failure the row keeps its previous values and an error shows. */
+  async function handleUpdateSubTransaction(id: string, input: SubTransactionListInput) {
+    if (!transaction) return
+    setSubTransactionError(null)
+    try {
+      await updateSubTransaction.mutateAsync({ transactionId: transaction.id, subTransactionId: id, input })
+    } catch {
+      setSubTransactionError("Couldn't save that item — try again.")
+    }
+  }
+
+  /** Removes one item: DELETE. The row is only dropped once the refetch confirms the server did it. */
+  async function handleRemoveSubTransaction(id: string) {
+    if (!transaction) return
+    setSubTransactionError(null)
+    try {
+      await deleteSubTransaction.mutateAsync({ transactionId: transaction.id, subTransactionId: id })
+    } catch {
+      setSubTransactionError("Couldn't remove that item — try again.")
+    }
+  }
+
   async function handleDownload(attachment: TransactionAttachmentItem) {
     if (!transaction) return
     setDownloadingId(attachment.id)
@@ -123,15 +211,7 @@ export default function TransactionDetailPage() {
       // The download route is protected, so an <a href> can't reach it — fetch the bytes with the
       // auth header, then hand the blob to a throwaway object-URL anchor to trigger the save.
       const blob = await downloadTransactionAttachment(transaction.id, attachment.id)
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = attachment.filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      // Revoke on the next tick so the browser has started reading the blob before it's freed.
-      setTimeout(() => URL.revokeObjectURL(url), 0)
+      saveBlob(blob, attachment.filename)
     } catch {
       setDownloadError(true)
     } finally {
@@ -143,6 +223,21 @@ export default function TransactionDetailPage() {
     setDeleteError(false)
     setActionsTarget(attachment)
     setActionsOpen(true)
+  }
+
+  /** Uploads each picked file straight onto this transaction; the detail query refetches the rows. */
+  async function handlePickAttachment(file: File) {
+    if (!transaction) return
+    setAttachmentPickerOpen(false)
+    setAttachmentUploadError(false)
+    setAttachmentUploadsInFlight((count) => count + 1)
+    try {
+      await uploadAttachment.mutateAsync({ transactionId: transaction.id, file })
+    } catch {
+      setAttachmentUploadError(true)
+    } finally {
+      setAttachmentUploadsInFlight((count) => count - 1)
+    }
   }
 
   async function handleDelete(attachment: TransactionAttachmentItem) {
@@ -158,6 +253,29 @@ export default function TransactionDetailPage() {
       setDeleteError(true)
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  function handleRequestDeleteTransaction() {
+    setDeleteTransactionFailed(false)
+    setDeleteTransactionOpen(true)
+  }
+
+  function handleCloseDeleteTransaction() {
+    if (deleteTransaction.isPending) return
+    setDeleteTransactionOpen(false)
+    setDeleteTransactionFailed(false)
+  }
+
+  /** Deletes the transaction; the server cascades to its line items and attachments. */
+  async function handleDeleteTransaction() {
+    if (!transaction) return
+    setDeleteTransactionFailed(false)
+    try {
+      await deleteTransaction.mutateAsync(transaction.id)
+      navigate('/transactions', { replace: true })
+    } catch {
+      setDeleteTransactionFailed(true)
     }
   }
 
@@ -206,7 +324,12 @@ export default function TransactionDetailPage() {
 
   const effectiveCurrencyCode = currencyCode || currency?.code || ''
   const userId = userOverride || transaction?.user_id || ''
-  const amountCents = amountToCents(amount)
+  // While items exist the transaction amount is derived from them and the field is read-only, so
+  // both the shown value and the value compared for dirtiness come from the item sum, not the field
+  // state (which is seeded from the server's amount on entry and kept in step by the effect above).
+  const subTransactionTotalCents = subTransactions.reduce((sum, item) => sum + item.amount, 0)
+  const amountCents = hasSubTransactions ? subTransactionTotalCents : amountToCents(amount)
+  const amountDisplay = hasSubTransactions ? decimalStringToAmountDisplay(amountCents / 100) : amount
   const canSave =
     amountCents > 0 &&
     name.trim() !== '' &&
@@ -217,7 +340,7 @@ export default function TransactionDetailPage() {
   const isDirty =
     baseline !== null &&
     (type !== baseline.type ||
-      amount !== baseline.amount ||
+      amountDisplay !== baseline.amount ||
       currencyCode !== baseline.currencyCode ||
       categoryId !== baseline.categoryId ||
       name !== baseline.name ||
@@ -233,13 +356,14 @@ export default function TransactionDetailPage() {
         id: transaction.id,
         input: {
           type,
-          amount: amountCents,
           currency_code: effectiveCurrencyCode,
           category_id: categoryId,
           user_id: userId,
           name: name.trim(),
           description,
           created_at: toISODateTime(date, time),
+          // The server derives (and rejects setting) amount while any item exists.
+          ...(hasSubTransactions ? {} : { amount: amountCents }),
         },
       },
       {
@@ -252,7 +376,11 @@ export default function TransactionDetailPage() {
 
   const edit: TransactionDetailEditProps = {
     type,
-    amount,
+    amount: amountDisplay,
+    amountReadOnly: hasSubTransactions,
+    amountNote: hasSubTransactions
+      ? `= sum of ${subTransactions.length} ${subTransactions.length === 1 ? 'item' : 'items'}`
+      : undefined,
     currencyCode: effectiveCurrencyCode || undefined,
     currencies,
     hasCurrency: currencies.length > 0,
@@ -285,6 +413,12 @@ export default function TransactionDetailPage() {
     },
     onUserChange: setUserOverride,
     onToggleMore: () => setMoreOpen((v) => !v),
+    subTransactions,
+    subTransactionsBusy,
+    subTransactionError,
+    onAddSubTransaction: handleAddSubTransaction,
+    onUpdateSubTransaction: handleUpdateSubTransaction,
+    onRemoveSubTransaction: handleRemoveSubTransaction,
     onSave: handleSave,
     onReset: handleReset,
     onCancel: handleCancel,
@@ -293,15 +427,25 @@ export default function TransactionDetailPage() {
   const props: TransactionDetailViewProps = {
     title: transaction ? transaction.name || transaction.description || transaction.category_name : '',
     categoryName: transaction?.category_name ?? '',
-    amount: transaction ? formatSignedAmount(Number(transaction.amount), transaction.type) : '',
+    amount: transaction
+      ? formatSignedAmount(transaction.amount / 100, transaction.type, transaction.currency_code)
+      : '',
     isIncome: transaction?.type === 'income',
     items,
+    subTransactions: subTransactionItems,
     attachments,
+    attachmentsUploading: attachmentUploadsInFlight > 0,
+    attachmentUploadError,
     downloadError,
     isLoading: hasValidId && transactionQuery.isPending,
     isError: !hasValidId || transactionQuery.isError,
     isEditing: editing,
     onStartEdit: handleStartEdit,
+    onAddAttachment: () => {
+      setAttachmentUploadError(false)
+      setAttachmentPickerOpen(true)
+    },
+    onRequestDelete: handleRequestDeleteTransaction,
     edit,
     onPreview: setPreviewAttachment,
     onOpenActions: openActions,
@@ -328,13 +472,27 @@ export default function TransactionDetailPage() {
           onClose={() => setActionsOpen(false)}
         />
       )}
+      <DeleteTransactionAction
+        open={deleteTransactionOpen}
+        transactionName={deleteTransactionOpen ? props.title : ''}
+        isDeleting={deleteTransaction.isPending}
+        error={deleteTransactionFailed}
+        onConfirm={handleDeleteTransaction}
+        onClose={handleCloseDeleteTransaction}
+      />
+      <TransactionAttachmentPicker
+        open={attachmentPickerOpen}
+        onClose={() => setAttachmentPickerOpen(false)}
+        onFile={handlePickAttachment}
+        description="Take a photo or choose one or more files to attach to this transaction."
+      />
       {previewAttachment && transaction && (
         <AttachmentPreview
           key={previewAttachment.id}
-          transactionId={transaction.id}
           attachment={previewAttachment}
           isDownloading={downloadingId === previewAttachment.id}
           onDownload={handleDownload}
+          loadBlob={(attachmentId) => downloadTransactionAttachment(transaction.id, attachmentId)}
           onClose={() => setPreviewAttachment(null)}
         />
       )}

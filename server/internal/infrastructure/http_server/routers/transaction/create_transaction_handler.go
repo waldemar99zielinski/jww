@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"jww/internal/adapter/schema"
+	"jww/internal/domain"
 	"jww/internal/infrastructure/http_server/kernel"
 )
 
@@ -21,7 +22,12 @@ func createTransactionHandler(deps *kernel.Deps) http.HandlerFunc {
 			return
 		}
 
-		t, err := deps.TransactionWorkflow.Create(appCtx, req.Type, req.Amount, req.CurrencyCode, req.CategoryID, req.UserID, req.Source, req.Name, req.Description, req.CreatedAt, req.AttachmentIDs)
+		subTransactions := make([]domain.NewSubTransaction, len(req.SubTransactions))
+		for i, item := range req.SubTransactions {
+			subTransactions[i] = domain.NewSubTransaction{Name: item.Name, Label: item.Label, Amount: item.Amount}
+		}
+
+		t, err := deps.TransactionWorkflow.Create(appCtx, req.Type, req.Amount, req.CurrencyCode, req.CategoryID, req.UserID, req.Source, req.Name, req.Description, req.CreatedAt, req.AttachmentIDs, subTransactions)
 		if err != nil {
 			kernel.WriteError(w, r, err)
 			return

@@ -1,4 +1,5 @@
 import { lazy, useMemo, useState } from 'react'
+import type { TransactionSortOrder } from '@/api/transactions'
 import type { TransactionDto } from '@/api/types'
 import { ResponsiveView } from '@/components/ResponsiveView'
 import { useAuth } from '@/hooks/useAuth'
@@ -18,6 +19,7 @@ export default function TransactionsPage() {
   const [nameFilter, setNameFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [sortOrder, setSortOrder] = useState<TransactionSortOrder>('desc')
   const { user } = useAuth()
   const usersQuery = useUsers()
   const incomeCategoriesQuery = useCategories('income')
@@ -33,6 +35,8 @@ export default function TransactionsPage() {
     type: filter === 'all' ? undefined : filter,
     created_from: hasValidDateRange && dateFrom ? new Date(`${dateFrom}T00:00:00`).toISOString() : undefined,
     created_to: hasValidDateRange && dateTo ? new Date(`${dateTo}T23:59:59.999`).toISOString() : undefined,
+    sort_key: 'date',
+    sort_order: sortOrder,
   })
   const transactions = useMemo(() => {
     const query = nameFilter.trim().toLowerCase()
@@ -74,6 +78,8 @@ export default function TransactionsPage() {
     onDateFromChange: setDateFrom,
     dateTo,
     onDateToChange: setDateTo,
+    sortOrder,
+    onSortOrderChange: setSortOrder,
     grouped,
     isEmpty: transactions.length === 0,
   }

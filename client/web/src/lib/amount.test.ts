@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { amountToCents, decimalStringToAmountDisplay, normalizeAmountInput, sanitizeAmountInput } from './amount'
+import {
+  amountToCents,
+  decimalStringToAmountDisplay,
+  normalizeAmountInput,
+  normalizeSignedAmountInput,
+  sanitizeAmountInput,
+  sanitizeSignedAmountInput,
+} from './amount'
 
 describe('sanitizeAmountInput', () => {
   it('keeps digits and a single comma, dropping dots and other characters', () => {
@@ -14,6 +21,24 @@ describe('sanitizeAmountInput', () => {
 
   it('clamps the fraction to two digits', () => {
     expect(sanitizeAmountInput('12,345')).toBe('12,34')
+  })
+})
+
+describe('signed line-item amount input', () => {
+  it('preserves one leading minus for discounts', () => {
+    expect(sanitizeSignedAmountInput('-1a2,345')).toBe('-12,34')
+    expect(sanitizeSignedAmountInput('-')).toBe('-')
+    expect(sanitizeSignedAmountInput('12,34')).toBe('12,34')
+  })
+
+  it('normalizes negative values without losing the sign', () => {
+    expect(normalizeSignedAmountInput('-5')).toBe('-5,00')
+    expect(normalizeSignedAmountInput('-5,5')).toBe('-5,50')
+    expect(normalizeSignedAmountInput('5,5')).toBe('5,50')
+  })
+
+  it('converts a signed display value to negative cents', () => {
+    expect(amountToCents('-1,00')).toBe(-100)
   })
 })
 

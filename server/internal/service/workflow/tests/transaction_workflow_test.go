@@ -13,38 +13,43 @@ import (
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
 	transactioncategory "jww/internal/service/transaction_category"
+	"jww/internal/service/transaction_sub_transaction"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
 )
 
 type transactionWorkflowFixture struct {
-	currencyRepo      *fakeCurrencyRepo
-	categoryRepo      *fakeCategoryRepo
-	userRepo          *fakeUserRepo
-	transactionRepo   *fakeTransactionRepo
-	attachmentRepo    *fakeAttachmentRepo
-	attachmentStorage *fakeAttachmentStorage
-	uowManager        *fakeUoWManager
-	workflow          *workflow.TransactionWorkflow
+	currencyRepo       *fakeCurrencyRepo
+	categoryRepo       *fakeCategoryRepo
+	userRepo           *fakeUserRepo
+	transactionRepo    *fakeTransactionRepo
+	attachmentRepo     *fakeAttachmentRepo
+	subTransactionRepo *fakeSubTransactionRepo
+	attachmentStorage  *fakeAttachmentStorage
+	uowManager         *fakeUoWManager
+	workflow           *workflow.TransactionWorkflow
 }
 
 func newTransactionWorkflowFixture(currencies []domain.Currency, categories []domain.TransactionCategory, users []domain.User) *transactionWorkflowFixture {
 	f := &transactionWorkflowFixture{
-		currencyRepo:      newFakeCurrencyRepo(currencies...),
-		categoryRepo:      newFakeCategoryRepo(categories...),
-		userRepo:          newFakeUserRepo(users...),
-		transactionRepo:   &fakeTransactionRepo{},
-		attachmentRepo:    newFakeAttachmentRepo(),
-		attachmentStorage: newFakeAttachmentStorage(),
-		uowManager:        &fakeUoWManager{},
+		currencyRepo:       newFakeCurrencyRepo(currencies...),
+		categoryRepo:       newFakeCategoryRepo(categories...),
+		userRepo:           newFakeUserRepo(users...),
+		transactionRepo:    &fakeTransactionRepo{},
+		attachmentRepo:     newFakeAttachmentRepo(),
+		subTransactionRepo: newFakeSubTransactionRepo(),
+		attachmentStorage:  newFakeAttachmentStorage(),
+		uowManager:         &fakeUoWManager{},
 	}
 	attachmentService := transaction_attachment.NewService(f.attachmentRepo, f.attachmentStorage, nil)
+	subTransactionService := transaction_sub_transaction.NewService(f.subTransactionRepo, f.uowManager)
 	f.workflow = workflow.NewTransactionWorkflow(
 		currency.NewService(f.currencyRepo, f.uowManager),
 		transactioncategory.NewService(f.categoryRepo, f.uowManager),
 		user.NewService(f.userRepo, fakePasswordHasher{}, f.uowManager),
 		transaction.NewService(f.transactionRepo, f.uowManager),
 		attachmentService,
+		subTransactionService,
 		f.uowManager,
 	)
 	return f
@@ -64,7 +69,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, []domain.TransactionCategory{category}, []domain.User{user})
 
-		created, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
+		created, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, domain.Money(1500), created.Amount)
@@ -81,7 +86,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture(nil, []domain.TransactionCategory{category}, []domain.User{user})
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -92,7 +97,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, nil, []domain.User{user})
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", uuid.New(), user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", uuid.New(), user.ID, domain.TransactionSourceManual, "Weekly shop", "", nil, nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -103,7 +108,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		category := groceries()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, []domain.TransactionCategory{category}, nil)
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, uuid.New(), domain.TransactionSourceManual, "Weekly shop", "", nil, nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeExpense, domain.Money(1500), "USD", category.ID, uuid.New(), domain.TransactionSourceManual, "Weekly shop", "", nil, nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -116,7 +121,7 @@ func TestTransactionWorkflow_Create(t *testing.T) {
 		user := julcia()
 		f := newTransactionWorkflowFixture([]domain.Currency{usd}, []domain.TransactionCategory{category}, []domain.User{user})
 
-		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeIncome, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Salary", "", nil, nil)
+		_, err := f.workflow.Create(newAppContext(), domain.TransactionTypeIncome, domain.Money(1500), "USD", category.ID, user.ID, domain.TransactionSourceManual, "Salary", "", nil, nil, nil)
 
 		require.Error(t, err)
 		assert.True(t, f.uowManager.last().restored)
@@ -264,6 +269,7 @@ func TestTransactionWorkflow_List(t *testing.T) {
 			UserID:       &user.ID,
 			CategoryID:   &category.ID,
 			CurrencyCode: "USD",
+			Sort:         transaction.Sort{Key: transaction.SortKeyDate, Order: transaction.SortOrderAsc},
 		})
 
 		require.NoError(t, err)
@@ -271,6 +277,7 @@ func TestTransactionWorkflow_List(t *testing.T) {
 		assert.Equal(t, user.ID, *f.transactionRepo.listFilter.UserID)
 		assert.Equal(t, category.ID, *f.transactionRepo.listFilter.CategoryID)
 		assert.Equal(t, "USD", f.transactionRepo.listFilter.CurrencyCode)
+		assert.Equal(t, transaction.Sort{Key: transaction.SortKeyDate, Order: transaction.SortOrderAsc}, f.transactionRepo.listFilter.Sort)
 		assert.Nil(t, f.uowManager.last())
 	})
 

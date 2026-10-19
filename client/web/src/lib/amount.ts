@@ -20,6 +20,26 @@ export function sanitizeAmountInput(raw: string): string {
 }
 
 /**
+ * Same display rules as `sanitizeAmountInput`, but preserves one leading minus
+ * so discount/adjustment line items can be entered. A lone "-" is retained
+ * while the user is still typing.
+ */
+export function sanitizeSignedAmountInput(raw: string): string {
+  const negative = raw.trimStart().startsWith('-')
+  const unsigned = sanitizeAmountInput(raw.replace(/-/g, ''))
+  if (!negative) return unsigned
+  return unsigned === '' ? '-' : `-${unsigned}`
+}
+
+/** Normalizes a signed line-item amount, preserving the leading minus. */
+export function normalizeSignedAmountInput(display: string): string {
+  if (display === '') return ''
+  const negative = display.startsWith('-')
+  const normalized = normalizeAmountInput(negative ? display.slice(1) : display)
+  return negative ? `-${normalized}` : normalized
+}
+
+/**
  * Pads a display string to exactly two decimals so it reads as money:
  * "5" -> "5,00", "5,5" -> "5,50", "5,50" stays put. An empty field stays
  * empty so the placeholder can show. Runs when the field loses focus.
@@ -45,10 +65,15 @@ export function amountToCents(display: string): number {
   return Number(`${intPart}${fracPart}`)
 }
 
+/** Converts whole cents to the comma display form: 4127 -> "41,27". */
+export function centsToAmountDisplay(cents: number): string {
+  return decimalStringToAmountDisplay(cents / 100)
+}
+
 /**
- * Reformats a server decimal amount ("24.90", as `TransactionDto.amount`) into the comma display
- * form ("24,90") so prefilled/seeded amounts match what the input accepts. A value already in
- * display form passes through unchanged.
+ * Reformats an extraction decimal amount ("24.90") into the comma display form ("24,90") so
+ * prefilled/seeded amounts match what the input accepts. A value already in display form passes
+ * through unchanged.
  *
  * Accepts a number too: the Go `Money` type marshals as a bare JSON number (e.g. `12.34`), so a
  * real API response can hand us `42.5` even though the DTO's TS type says `string`.

@@ -33,6 +33,12 @@ here instead of copying it.
     loads (see root README's page architecture section).
   - `DesignModeBadge.tsx`, `ProtectedRoute.tsx`, `ResponsiveView.tsx` — app-shell/routing
     infrastructure.
+  - `AttachmentPreview.tsx` — the shared full-screen attachment lightbox used by the transaction
+    detail page and the Add page's attachment bar (images/PDF inline, video/audio/text via a caller
+    supplied blob loader).
+  - `TransactionAttachmentPicker.tsx` — the shared camera/file source sheet. Used by the Add page
+    (draft uploads) and the transaction detail page (uploads directly onto the existing
+    transaction); the caller owns the upload, so the component only forwards picked files.
   - `OfflineGate.tsx` / `OfflineScreen.tsx` — the blocking "You're offline" state. `OfflineGate`
     wraps the whole app (in `App.tsx`), marks the routed tree `inert` while offline and owns
     focus/announcement; `OfflineScreen` is the pure panel it renders. App-shell chrome, so it
@@ -54,6 +60,20 @@ here instead of copying it.
     date/time pickers, and `MoreOptionsPanel` the payer picker. `categoryOptions.tsx` is a
     data-mapping helper (`toCategoryOptions`), not a component — it sits here beside its only
     consumers. The matching amount display/wire helpers live in `lib/amount.ts`.
+  - `TransactionFormFields.tsx` — composes those pieces into the field set both transaction forms
+    need (type, amount/currency, name, category, description, date and payer) with a `layout` prop
+    for the desktop two-column vs. mobile stacked arrangement. Page-specific pieces stay slots:
+    Add supplies its date shortcut, line-item panel and save button; detail edit supplies the
+    always-open date fields, inline line-item list and Save/Reset actions. It also accepts an
+    optional `lowConfidenceFields` set; only Add passes it, to draw the red review outline on
+    extracted values below the confidence threshold.
+  - `SubTransactionList.tsx` — the editable line-item list (name/label/amount per row, inline
+    edit + remove, "+ Add item", running total) used by the detail screen's edit mode, where each
+    change is a sub-transaction CRUD call. Pure display: `items` + `onAdd`/`onUpdate`/`onRemove`
+    props, with `disabled`/`busy` flags for the saving state; amounts follow the same
+    comma-display-string ↔ cents convention as `AmountHero`. The Add screen deliberately keeps its
+    collapsed `SubTransactionsPanel` + focused `SubTransactionModal` (local drafts that only persist
+    with the transaction); both surfaces share those amount conventions.
   - `icons.tsx` — **the one exception** to one-component-per-file: a hand-drawn SVG icon set
     behind a single shared `Icon` wrapper. Splitting 24+ one-line icon components into 24+ files
     would hurt navigability more than it helps — add new icons here, don't inline SVG elsewhere.

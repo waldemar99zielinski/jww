@@ -1,17 +1,8 @@
-import { AmountHero } from '@/components/AmountHero'
-import { toCategoryOptions } from '@/components/categoryOptions'
+import { SubTransactionList } from '@/components/SubTransactionList'
 import { DateTimeFields } from '@/components/DateTimeFields'
-import { MoreOptionsPanel } from '@/components/MoreOptionsPanel'
+import { TransactionFormFields } from '@/components/TransactionFormFields'
 import { Button } from '@/components/ui/Button'
-import { SearchableSelect } from '@/components/ui/SearchableSelect'
-import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { TextInput } from '@/components/ui/TextInput'
 import type { TransactionDetailEditProps } from '../types'
-
-const typeOptions = [
-  { label: 'expense', value: 'expense' },
-  { label: 'income', value: 'income' },
-] as const
 
 export interface TransactionEditFormProps extends TransactionDetailEditProps {
   /** Drives the same desktop/mobile layout split as the Add Transaction screen. */
@@ -22,12 +13,17 @@ export interface TransactionEditFormProps extends TransactionDetailEditProps {
  * The editable form shown in place of the read-only fields on the transaction detail screen.
  * Pure display: every value and handler arrives as a prop from the page container (see
  * `index.tsx`), which is the only place the edit state and the PATCH mutation live.
+ *
+ * The core fields come from the same `TransactionFormFields` component the Add screen uses; only
+ * this page's line-item controls and Save/Reset actions are supplied as slots.
  */
 export function TransactionEditForm({
   layout,
   type,
   onSelectType,
   amount,
+  amountReadOnly,
+  amountNote,
   onAmountChange,
   currencyCode,
   currencies,
@@ -51,6 +47,12 @@ export function TransactionEditForm({
   showUserPicker,
   moreOpen,
   onToggleMore,
+  subTransactions,
+  subTransactionsBusy,
+  subTransactionError,
+  onAddSubTransaction,
+  onUpdateSubTransaction,
+  onRemoveSubTransaction,
   canSave,
   saving,
   saveError,
@@ -59,78 +61,21 @@ export function TransactionEditForm({
   onReset,
   onCancel,
 }: TransactionEditFormProps) {
-  const isDesktop = layout === 'desktop'
-
-  const typeField = <SegmentedControl value={type} options={typeOptions} onChange={onSelectType} />
-
-  const amountField = (
-    <AmountHero
-      amount={amount}
-      currencyCode={currencyCode}
-      currencies={currencies}
-      onCurrencyChange={onCurrencyChange}
-      onAmountChange={onAmountChange}
-      boxed={isDesktop}
-      fullWidth={!isDesktop}
-    />
-  )
-
-  const noCurrency = !hasCurrency ? (
-    <p className="m-0 text-center text-[11.5px] text-muted">
-      No currency configured yet — add one in Settings before saving.
-    </p>
-  ) : null
-
-  const nameField = (
-    <TextInput
-      type="text"
-      value={name}
-      onChange={(e) => onNameChange(e.target.value)}
-      placeholder="Name (e.g. Lidl groceries)"
-      aria-label="Transaction name"
-      className="bg-surface sm:text-[13px]"
-    />
-  )
-
-  const descriptionField = (
-    <TextInput
-      type="text"
-      value={description}
-      onChange={(e) => onDescriptionChange(e.target.value)}
-      placeholder="Description (optional)"
-      aria-label="Transaction description"
-      className="bg-surface sm:text-[13px]"
-    />
-  )
-
-  const categoryField = (
+  // The line items persist per row on this screen (unlike the Add form, where they are local until
+  // save): every change goes out as a CRUD call owned by the container, so this stays pure display.
+  const itemsField = (
     <div className="flex flex-col gap-2">
-      <p className="m-0 text-xs font-semibold uppercase tracking-wide text-muted">Category</p>
-      <SearchableSelect
-        value={categoryId ?? ''}
-        onChange={onSelectCategory}
-        options={toCategoryOptions(categories)}
-        placeholder="Select category"
-        searchPlaceholder="Search categories"
-        emptyMessage="No categories found"
-        inline={!isDesktop}
+      <SubTransactionList
+        items={subTransactions ?? []}
+        currencyCode={currencyCode}
+        onAdd={onAddSubTransaction ?? (() => {})}
+        onUpdate={onUpdateSubTransaction ?? (() => {})}
+        onRemove={onRemoveSubTransaction ?? (() => {})}
+        disabled={saving}
+        busy={subTransactionsBusy}
       />
+      {subTransactionError && <p className="m-0 text-[11.5px] text-critical">{subTransactionError}</p>}
     </div>
-  )
-
-  const dateFields = (
-    <DateTimeFields date={date} time={time} onDateChange={onDateChange} onTimeChange={onTimeChange} onUseToday={onUseToday} />
-  )
-
-  const moreFields = (
-    <MoreOptionsPanel
-      open={moreOpen}
-      onToggle={onToggleMore}
-      users={users}
-      userId={userId}
-      onUserChange={onUserChange}
-      showUserPicker={showUserPicker}
-    />
   )
 
   const actions = (
@@ -157,39 +102,43 @@ export function TransactionEditForm({
     </div>
   )
 
-  if (isDesktop) {
-    return (
-      <div className="flex flex-col gap-6">
-        <div className="grid grid-cols-2 gap-8">
-          <div className="flex flex-col gap-5">
-            {typeField}
-            {amountField}
-            {noCurrency}
-            {nameField}
-            {descriptionField}
-            {dateFields}
-          </div>
-          <div className="flex flex-col gap-4">
-            {categoryField}
-            {moreFields}
-          </div>
-        </div>
-        {actions}
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-5">
-      {typeField}
-      {amountField}
-      {noCurrency}
-      {nameField}
-      {categoryField}
-      {descriptionField}
-      {dateFields}
-      {moreFields}
-      {actions}
-    </div>
+    <TransactionFormFields
+      layout={layout}
+      type={type}
+      onSelectType={onSelectType}
+      amount={amount}
+      onAmountChange={onAmountChange}
+      amountReadOnly={amountReadOnly}
+      amountNote={amountNote}
+      currencyCode={currencyCode}
+      currencies={currencies}
+      onCurrencyChange={onCurrencyChange}
+      hasCurrency={hasCurrency}
+      name={name}
+      onNameChange={onNameChange}
+      categories={categories}
+      categoryId={categoryId}
+      onSelectCategory={onSelectCategory}
+      description={description}
+      onDescriptionChange={onDescriptionChange}
+      users={users}
+      userId={userId}
+      onUserChange={onUserChange}
+      showUserPicker={showUserPicker}
+      moreOpen={moreOpen}
+      onToggleMore={onToggleMore}
+      dateField={
+        <DateTimeFields
+          date={date}
+          time={time}
+          onDateChange={onDateChange}
+          onTimeChange={onTimeChange}
+          onUseToday={onUseToday}
+        />
+      }
+      itemsField={itemsField}
+      actions={actions}
+    />
   )
 }

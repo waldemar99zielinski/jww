@@ -4,7 +4,7 @@ import { InstallInstructions } from './components/InstallInstructions'
 import { SettingsRow } from './components/SettingsRow'
 import type { SettingsViewProps } from './types'
 
-export default function SettingsDesktop({ displayName, username, currencyCode, onLogout, install }: SettingsViewProps) {
+export default function SettingsDesktop({ displayName, username, currencyCode, version, onLogout, install }: SettingsViewProps) {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="m-0 text-2xl font-bold">Settings</h1>
@@ -41,7 +41,11 @@ export default function SettingsDesktop({ displayName, username, currencyCode, o
             {install.show && (
               <SettingsRow Icon={IconInstall} label="Install app" trailing={install.trailing} onClick={install.onClick} />
             )}
-            <SettingsRow Icon={IconInfo} label="About Joint Wallet Watch" />
+            <SettingsRow
+              Icon={IconInfo}
+              label="About Joint Wallet Watch"
+              trailing={<small className="font-medium text-muted">v{version}</small>}
+            />
           </ul>
 
           {install.platform && (

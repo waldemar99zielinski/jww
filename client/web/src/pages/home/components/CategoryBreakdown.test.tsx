@@ -6,7 +6,7 @@ import { normalizeText } from '@/test/normalizeText'
 
 describe('CategoryBreakdown', () => {
   it('renders an empty state when there are no items', () => {
-    render(<CategoryBreakdown items={[]} />)
+    render(<CategoryBreakdown items={[]} currencyCode="EUR" />)
 
     expect(screen.getByText('No expenses yet this month.')).toBeInTheDocument()
   })
@@ -18,12 +18,13 @@ describe('CategoryBreakdown', () => {
           { categoryName: 'Groceries', amount: 42.5, percent: 100 },
           { categoryName: 'Transport', amount: 10, percent: 23.5 },
         ]}
+        currencyCode="EUR"
       />,
     )
 
     expect(screen.getByText('Groceries')).toBeInTheDocument()
-    expect(screen.getByText(normalizeText(formatAmount(42.5)))).toBeInTheDocument()
+    expect(screen.getByText(normalizeText(formatAmount(42.5, 'EUR')))).toBeInTheDocument()
     expect(screen.getByText('Transport')).toBeInTheDocument()
-    expect(screen.getByText(normalizeText(formatAmount(10)))).toBeInTheDocument()
+    expect(screen.getByText(normalizeText(formatAmount(10, 'EUR')))).toBeInTheDocument()
   })
 })

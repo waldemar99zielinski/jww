@@ -12,6 +12,18 @@ export interface AmountHeroProps {
   onCurrencyChange?: (code: string) => void
   boxed?: boolean
   fullWidth?: boolean
+  /**
+   * Renders the amount as plain text instead of an input — for the derived state when the value
+   * comes from a sum (see `note`) rather than from typing. Additive: omit it and the component
+   * behaves exactly as before.
+   */
+  readOnly?: boolean
+  /** Optional hint under the amount, e.g. "= sum of 3 items". Rendered as-is; ignored when empty. */
+  note?: string
+  /** Review outline for a low-confidence extracted amount. */
+  invalid?: boolean
+  /** Review outline for a low-confidence extracted currency. */
+  currencyInvalid?: boolean
 }
 
 export function AmountHero({
@@ -22,15 +34,21 @@ export function AmountHero({
   onCurrencyChange,
   boxed,
   fullWidth,
+  readOnly = false,
+  note,
+  invalid = false,
+  currencyInvalid = false,
 }: AmountHeroProps) {
   const selectable = currencies.length > 1 && onCurrencyChange !== undefined
+  const reviewRing = 'rounded-lg ring-2 ring-critical'
 
   const currency = selectable ? (
     <InlineSelect
       value={currencyCode}
       onChange={(e) => onCurrencyChange(e.target.value)}
       aria-label="Currency"
-      className="text-[17px]"
+      aria-invalid={currencyInvalid || undefined}
+      className={`text-[17px] ${currencyInvalid ? reviewRing : ''}`}
       icon={<IconChevronDown className="h-4 w-4" />}
     >
       {currencies.map((option) => (
@@ -40,10 +58,22 @@ export function AmountHero({
       ))}
     </InlineSelect>
   ) : (
-    <span className="text-[17px] font-semibold text-muted">{currencyCode ?? '—'}</span>
+    <span
+      aria-invalid={currencyInvalid || undefined}
+      className={`text-[17px] font-semibold text-muted ${currencyInvalid ? reviewRing : ''}`}
+    >
+      {currencyCode ?? '—'}
+    </span>
   )
 
-  const input = (
+  const amountClassName = `border-0 bg-transparent p-0 text-center text-[40px] font-semibold tracking-tight sm:text-[40px] ${
+    fullWidth ? 'w-full pr-12' : 'w-36 flex-none'
+  }`
+
+  // Read-only shows the value as text; editable keeps the exact `TextInput` from before.
+  const input = readOnly ? (
+    <span className={`${amountClassName} ${invalid ? reviewRing : ''}`}>{amount}</span>
+  ) : (
     <TextInput
       type="text"
       inputMode="decimal"
@@ -57,21 +87,21 @@ export function AmountHero({
       placeholder="0,00"
       aria-label="Amount"
       autoFocus
-      className={`border-0 bg-transparent p-0 text-center text-[40px] font-semibold tracking-tight sm:text-[40px] ${
-        fullWidth ? 'w-full pr-12' : 'w-36 flex-none'
-      }`}
+      invalid={invalid}
+      className={amountClassName}
     />
   )
 
   if (fullWidth) {
     return (
       <div
-        className={`relative flex w-full items-center font-mono tabular-nums ${
+        className={`relative flex w-full flex-wrap items-center font-mono tabular-nums ${
           boxed ? 'rounded-xl border border-line bg-surface-sunken px-4 py-4' : ''
         }`}
       >
         {input}
         <div className="absolute right-0 top-1/2 -translate-y-1/2">{currency}</div>
+        {note && <span className="w-full pt-1 text-center text-xs font-normal text-muted">{note}</span>}
       </div>
     )
   }
@@ -84,6 +114,7 @@ export function AmountHero({
     >
       {input}
       {currency}
+      {note && <span className="w-full text-center text-xs font-normal text-muted">{note}</span>}
     </div>
   )
 }

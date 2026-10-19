@@ -28,19 +28,23 @@ Each row links to the read-only detail screen at `detail/` (`/transactions/:id`)
 ## Things to know
 
 - Filter values map 1:1 to `api/transactions.ts`'s `TransactionFilters` — if you add a new
-  filterable field, add it in both places (plus `api/mock/data.ts`'s mock filtering).
-- There is **no user filter by default**: `user_id` is only sent when the user picks one in the
-  filter panel (otherwise the request is unfiltered and the server returns every user's rows).
-  `useTransactions` therefore no longer requires `user_id` to fetch.
-- Rows render in the **exact order the server returns them** (server is newest-first by id). The
-  page only buckets that stream into day sections as it arrives — it never re-sorts or reverses,
-  so changing server order changes the UI.
+  filterable field, add it in both places (plus `api/mock/data.ts`'s mock filtering). Sorting is
+  carried by the same object as `sort_key`/`sort_order`; the filter panel's **Order** select
+  defaults to date descending and applies with the rest of the draft filters.
+- There is **no user filter by default**: the user select starts on **All users**, and `user_id`
+  is only sent when the user picks someone in the filter panel (otherwise the request is
+  unfiltered and the server returns every user's rows). `useTransactions` therefore does not
+  require `user_id` to fetch.
+- Rows render in the **exact order the server returns them** (server defaults to newest-first by
+  transaction date; `sort_order` can request the ascending direction). The page only buckets that
+  stream into day sections as it arrives — it never re-sorts or reverses.
 
 ## Testing
 
 - Container: MSW-mock `useTransactions` with a fixed set of filter combinations; assert the
   applied filters produce the right query params (see the 1:1 mapping to `TransactionFilters`
-  noted above) and the right list renders.
+  noted above) and the right list renders. The default request carries `sort_key=date` and
+  `sort_order=desc`.
 - `TransactionFiltersDropdown`: test its draft-vs-applied state split directly with `user-event` —
   edit a draft filter, cancel/close without applying, and assert the page's applied filters (and
   thus the query) didn't change; then repeat with "Apply" and assert they did.

@@ -4,9 +4,10 @@ interface HeroBalanceCardProps {
   balance: number
   income: number
   expenses: number
+  currencyCode: string
 }
 
-export function HeroBalanceCard({ balance, income, expenses }: HeroBalanceCardProps) {
+export function HeroBalanceCard({ balance, income, expenses, currencyCode }: HeroBalanceCardProps) {
   return (
     <div className="hero-card relative overflow-hidden rounded-[22px] px-5 pb-[18px] pt-5 text-on-accent shadow-[var(--shadow-sm)]">
       <svg
@@ -28,16 +29,22 @@ export function HeroBalanceCard({ balance, income, expenses }: HeroBalanceCardPr
 
       <p className="relative m-0 text-xs font-semibold opacity-80">Balance</p>
       <p className="relative m-0 mb-3.5 mt-1 font-mono text-[32px] font-semibold tracking-tight tabular-nums">
-        {formatAmount(balance)}
+        {formatAmount(balance, currencyCode)}
       </p>
       <div className="relative flex gap-5 text-[13px]">
         <span className="flex items-center gap-1.5 opacity-90">
           <span className="h-[7px] w-[7px] rounded-full bg-current" />
-          Income <strong className="font-mono font-semibold tabular-nums">{formatSignedAmount(income, 'income')}</strong>
+          Income{' '}
+          <strong className="font-mono font-semibold tabular-nums">
+            {formatSignedAmount(income, 'income', currencyCode)}
+          </strong>
         </span>
         <span className="flex items-center gap-1.5 opacity-90">
           <span className="h-[7px] w-[7px] rounded-full bg-current" />
-          Expenses <strong className="font-mono font-semibold tabular-nums">{formatSignedAmount(expenses, 'expense')}</strong>
+          Expenses{' '}
+          <strong className="font-mono font-semibold tabular-nums">
+            {formatSignedAmount(expenses, 'expense', currencyCode)}
+          </strong>
         </span>
       </div>
     </div>

@@ -21,7 +21,8 @@ below) rather than exposing the hook to the views.
 ## Install row
 
 The root page renders an "Install app" row between "Export data" and "About Joint Wallet Watch".
-The container (`index.tsx`) calls `useInstallPrompt()` and resolves everything into an
+The "About Joint Wallet Watch" row shows `APP_VERSION` (from `package.json`) as its trailing
+value. The container (`index.tsx`) calls `useInstallPrompt()` and resolves everything into an
 `InstallViewProps` object on `SettingsViewProps`, so both view variants just render the result:
 actionable (Chromium prompt / Safari instructions), passive with a reason (unsupported browser or
 in-app webview), or hidden (already installed, or Chromium has not offered a prompt yet). See the

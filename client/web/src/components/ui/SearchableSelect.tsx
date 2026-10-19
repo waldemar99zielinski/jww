@@ -20,6 +20,8 @@ export interface SearchableSelectProps {
   emptyMessage?: string
   /** Render the list inline (expands in flow) instead of as an absolute popover. */
   inline?: boolean
+  /** Draws the review outline used when an extracted value is below the confidence threshold. */
+  invalid?: boolean
   className?: string
 }
 
@@ -32,6 +34,7 @@ export function SearchableSelect({
   emptyOptionLabel,
   emptyMessage = 'No results',
   inline = false,
+  invalid = false,
   className,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false)
@@ -69,8 +72,11 @@ export function SearchableSelect({
         variant="custom"
         type="button"
         aria-expanded={open}
+        aria-invalid={invalid || undefined}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface-sunken px-3.5 py-2.5 text-left text-sm font-normal normal-case tracking-normal text-ink outline-none"
+        className={`flex w-full items-center justify-between gap-2 rounded-xl border bg-surface-sunken px-3.5 py-2.5 text-left text-sm font-normal normal-case tracking-normal text-ink outline-none ${
+          invalid ? 'border-critical ring-2 ring-critical' : 'border-line'
+        }`}
       >
         <span className="flex min-w-0 items-center gap-2">
           {selected?.icon}

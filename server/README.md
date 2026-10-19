@@ -98,7 +98,7 @@ one of the two (`public.Post(...)` vs `protected.Get(...)`).
 ## Design notes
 
 - **`Transaction.ID` is a plain `int64`** (Postgres `bigint` identity). Category/User/Currency use `uuid.UUID`; `Currency` is keyed by its 3-letter `code`.
-- **Money/rate fields use `domain.Money`/`domain.ExchangeRate`** — `int64` fixed-point (cents, and 1e-4 units). `+`/`-`/`<`/`==` work directly; `ExchangeRate.Convert` is the one nontrivial op. JSON encodes them as bare numbers; Postgres `NUMERIC` round-trips via text, never `float64`.
+- **Money/rate fields use `domain.Money`/`domain.ExchangeRate`** — `int64` fixed-point (cents, and 1e-4 units). `+`/`-`/`<`/`==` work directly; `ExchangeRate.Convert` is the one nontrivial op. Money JSON is always an integer number of cents (`4127`), never a decimal; rates remain bare decimal numbers. Postgres `NUMERIC` round-trips via text, never `float64`.
 - **Date-only fields** use `schema.Date` (`"YYYY-MM-DD"`), not `time.Time`.
 - **Standard JSON contract**: every 2xx body is `{"data": ...}` (`kernel.WriteJSON`/`WriteOK`/`WriteCreated`, or `kernel.WriteNoContent` for 204); every non-2xx body is `{"error": {"code", "message", "details?}}` (`kernel.WriteError`/`WriteBadRequest`). `details` carries field-level validation failures.
 - **No request-validation library**: each request schema has `Validate() error`, called by hand in the handler before the service. Failures → `400 {"error": {"code": "bad_request", "message": "..."}}`.

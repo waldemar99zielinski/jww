@@ -4,7 +4,7 @@ import { InstallInstructions } from './components/InstallInstructions'
 import { SettingsRow } from './components/SettingsRow'
 import type { SettingsViewProps } from './types'
 
-export default function SettingsMobile({ displayName, username, currencyCode, onLogout, install }: SettingsViewProps) {
+export default function SettingsMobile({ displayName, username, currencyCode, version, onLogout, install }: SettingsViewProps) {
   return (
     <div className="flex flex-col gap-5 px-4 pb-4 pt-6">
       <div className="flex items-center gap-3">
@@ -30,7 +30,11 @@ export default function SettingsMobile({ displayName, username, currencyCode, on
         {install.show && (
           <SettingsRow Icon={IconInstall} label="Install app" trailing={install.trailing} onClick={install.onClick} />
         )}
-        <SettingsRow Icon={IconInfo} label="About Joint Wallet Watch" />
+        <SettingsRow
+          Icon={IconInfo}
+          label="About Joint Wallet Watch"
+          trailing={<small className="font-medium text-muted">v{version}</small>}
+        />
       </ul>
 
       <Button

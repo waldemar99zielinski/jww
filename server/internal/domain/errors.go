@@ -194,3 +194,52 @@ type ValidationError struct{ baseDomainError }
 func NewValidationError(message string) *ValidationError {
 	return &ValidationError{baseDomainError{kind: ErrorKindValidation, message: message}}
 }
+
+// UnsupportedAttachmentMediaTypeError means an attachment's media type is not
+// one the requested operation can process (e.g. extraction accepts images
+// only). The message is deliberately generic; MediaType carries the offending
+// value for callers that need it.
+type UnsupportedAttachmentMediaTypeError struct {
+	baseDomainError
+	MediaType string
+}
+
+func NewUnsupportedAttachmentMediaTypeError(mediaType string) *UnsupportedAttachmentMediaTypeError {
+	return &UnsupportedAttachmentMediaTypeError{
+		baseDomainError: baseDomainError{kind: ErrorKindValidation, message: "attachment media type is not supported"},
+		MediaType:       mediaType,
+	}
+}
+
+// AttachmentExtractionFailedError means the extraction provider could not
+// produce a usable result: a timeout, a transport or provider failure, a rate
+// limit, a content-filter refusal, or output that failed schema validation.
+// Refusals and outages deliberately share this kind (and its generic message)
+// because the caller's recovery path is identical — keep the attachment and
+// retry — and provider detail must never reach a client. The underlying cause
+// is available via Unwrap for boundary logging.
+type AttachmentExtractionFailedError struct {
+	baseDomainError
+	cause error
+}
+
+func NewAttachmentExtractionFailedError(cause error) *AttachmentExtractionFailedError {
+	return &AttachmentExtractionFailedError{
+		baseDomainError: baseDomainError{kind: ErrorKindUnavailable, message: "attachment extraction is temporarily unavailable"},
+		cause:           cause,
+	}
+}
+
+func (e *AttachmentExtractionFailedError) Unwrap() error { return e.cause }
+
+type TransactionSubTransactionNotFoundError struct {
+	baseDomainError
+	SubTransactionID uuid.UUID
+}
+
+func NewTransactionSubTransactionNotFoundError(subTransactionID uuid.UUID) *TransactionSubTransactionNotFoundError {
+	return &TransactionSubTransactionNotFoundError{
+		baseDomainError:  baseDomainError{kind: ErrorKindNotFound, message: fmt.Sprintf("TransactionSubTransaction %s not found", subTransactionID)},
+		SubTransactionID: subTransactionID,
+	}
+}

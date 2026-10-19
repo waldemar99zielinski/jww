@@ -6,7 +6,7 @@ with the `goose` CLI for manual up/down/status.
 
 ## Files
 
-Numbered, applied in numeric order: `00001_create_transaction_categories_table.sql` … `00008_restrict_transaction_attachment_deletion.sql`. Later migrations reuse earlier enum types (e.g. `transactions.type` reuses `transaction_category_type`), so ordering matters. `00006` is a data seed (fixed UUIDv5 ids, `ON CONFLICT ... DO NOTHING`) rather than DDL — see its own header comment for the derivation. `00007` adds `transaction_attachments`: a nullable `transaction_id` (the whole "unattached draft" state), no ordinal/count column, and a partial index for the attached-list query. `00008` makes transaction deletion restrictive so attachment object and metadata cleanup cannot be bypassed. `embed.go` holds the `//go:embed *.sql` directive and the exported `FS` consumed by `database.Migrate`.
+Numbered, applied in numeric order: `00001_create_transaction_categories_table.sql` … `00009_allow_negative_sub_transaction_amounts.sql`. Later migrations reuse earlier enum types (e.g. `transactions.type` reuses `transaction_category_type`), so ordering matters. `00006` is a data seed (fixed UUIDv5 ids, `ON CONFLICT ... DO NOTHING`) rather than DDL — see its own header comment for the derivation. `00007` adds `transaction_attachments`: a nullable `transaction_id` (the whole "unattached draft" state), no ordinal/count column, and a partial index for the attached-list query. `00008` adds `transaction_sub_transactions` with a positive-amount CHECK. `00009` allows negative line-item amounts for discounts while still rejecting zero. `embed.go` holds the `//go:embed *.sql` directive and the exported `FS` consumed by `database.Migrate`.
 
 ## Rules
 

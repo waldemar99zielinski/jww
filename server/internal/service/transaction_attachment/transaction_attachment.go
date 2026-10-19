@@ -20,6 +20,7 @@ type Service struct {
 	storage      object_storage.Store
 	reportOrphan OrphanReporter
 	grantTokens  GrantTokenService
+	normalizer   ContentNormalizer
 }
 
 func NewService(repository Repository, storage object_storage.Store, reportOrphan OrphanReporter, grantTokens ...GrantTokenService) *Service {
@@ -33,6 +34,14 @@ func NewService(repository Repository, storage object_storage.Store, reportOrpha
 	return &Service{repository: repository, storage: storage, reportOrphan: reportOrphan, grantTokens: tokens}
 }
 
+// WithContentNormalizer installs optional upload normalization. Keeping it
+// optional preserves the service's pure streaming path for callers/tests that
+// do not need format conversion.
+func (s *Service) WithContentNormalizer(normalizer ContentNormalizer) *Service {
+	s.normalizer = normalizer
+	return s
+}
+
 func objectKey(id uuid.UUID) string { return id.String() }
 
 func (s *Service) UploadDraft(ctx domain.AppContext, filename, mediaType string, body io.Reader) (*domain.TransactionAttachment, error) {
@@ -44,12 +53,17 @@ func (s *Service) UploadForTransaction(ctx domain.AppContext, transactionID int6
 }
 
 func (s *Service) upload(ctx domain.AppContext, transactionID *int64, filename, mediaType string, body io.Reader) (*domain.TransactionAttachment, error) {
+	content, err := s.normalizeContent(filename, mediaType, body)
+	if err != nil {
+		return nil, err
+	}
+
 	id := uuid.New()
 	attachment := domain.TransactionAttachment{
 		ID:               id,
 		TransactionID:    transactionID,
-		OriginalFilename: filename,
-		MediaType:        mediaType,
+		OriginalFilename: content.Filename,
+		MediaType:        content.MediaType,
 		StorageKey:       objectKey(id),
 		CreatedAt:        time.Now().UTC(),
 	}
@@ -57,8 +71,8 @@ func (s *Service) upload(ctx domain.AppContext, transactionID *int64, filename, 
 		return nil, err
 	}
 
-	counted := &countingReader{reader: body}
-	stored, err := s.storage.Put(ctx, object_storage.Ref{Key: attachment.StorageKey}, counted, mediaType)
+	counted := &countingReader{reader: content.Body}
+	stored, err := s.storage.Put(ctx, object_storage.Ref{Key: attachment.StorageKey}, counted, content.MediaType)
 	if err != nil {
 		return nil, domain.NewObjectStorageUnavailableError(err)
 	}

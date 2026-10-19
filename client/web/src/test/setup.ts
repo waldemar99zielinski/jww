@@ -20,6 +20,13 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
     }) as MediaQueryList
 }
 
+// jsdom implements no image decoding. Attachment preparation downscales raster images with
+// `createImageBitmap`; provide a no-op 1×1 bitmap so uploads can flow through tests. (JPEGs at or
+// below the resize threshold are returned unchanged before any canvas work.)
+if (typeof globalThis.createImageBitmap !== 'function') {
+  globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close: () => {} })) as typeof createImageBitmap
+}
+
 // RTL's own auto-cleanup only registers against a *global* `afterEach` — this project runs
 // Vitest with `globals: false`, so it never fires on its own. Without this, DOM from one test
 // leaks into the next within the same file (e.g. two renders both matching the same role/text).

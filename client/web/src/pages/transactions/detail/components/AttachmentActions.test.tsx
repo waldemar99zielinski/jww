@@ -5,7 +5,7 @@ import { AttachmentActions } from './AttachmentActions'
 
 const attachment: TransactionAttachmentItem = {
   id: 'attachment-1',
-  filename: 'receipt.jpg',
+  filename: 'attachment.jpg',
   mediaType: 'image/jpeg',
   byteSize: 20480,
   previewUrl: '/api/v1/attachment-content?grant=grant-1',

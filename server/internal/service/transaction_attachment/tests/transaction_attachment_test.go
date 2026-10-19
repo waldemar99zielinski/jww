@@ -254,6 +254,56 @@ func TestService_UploadDraft(t *testing.T) {
 	})
 }
 
+type fakeNormalizer struct {
+	content transaction_attachment.NormalizedContent
+	err     error
+	called  bool
+}
+
+func (n *fakeNormalizer) Normalize(string, string, io.Reader) (transaction_attachment.NormalizedContent, error) {
+	n.called = true
+	if n.err != nil {
+		return transaction_attachment.NormalizedContent{}, n.err
+	}
+	return n.content, nil
+}
+
+func TestService_UploadDraft_NormalizesContentBeforeStorage(t *testing.T) {
+	repo, storage := newFakeRepo(), newFakeStorage()
+	normalizer := &fakeNormalizer{content: transaction_attachment.NormalizedContent{
+		Filename:  "receipt.png",
+		MediaType: "image/png",
+		Body:      strings.NewReader("png bytes"),
+	}}
+	svc, _ := newService(repo, storage)
+	svc.WithContentNormalizer(normalizer)
+
+	attachment, err := svc.UploadDraft(appCtx(), "receipt.heic", "image/heic", strings.NewReader("heic bytes"))
+
+	require.NoError(t, err)
+	assert.True(t, normalizer.called)
+	assert.Equal(t, "receipt.png", attachment.OriginalFilename)
+	assert.Equal(t, "image/png", attachment.MediaType)
+	assert.Equal(t, int64(len("png bytes")), attachment.ByteSize)
+	assert.Equal(t, []byte("png bytes"), storage.objects[attachment.StorageKey])
+}
+
+func TestService_UploadDraft_ConversionFailureIsValidationAndStoresNothing(t *testing.T) {
+	repo, storage := newFakeRepo(), newFakeStorage()
+	normalizer := &fakeNormalizer{err: errors.New("bad heic")}
+	svc, _ := newService(repo, storage)
+	svc.WithContentNormalizer(normalizer)
+
+	_, err := svc.UploadDraft(appCtx(), "receipt.heic", "image/heic", strings.NewReader("heic bytes"))
+
+	require.Error(t, err)
+	var domainErr domain.DomainError
+	require.ErrorAs(t, err, &domainErr)
+	assert.Equal(t, domain.ErrorKindValidation, domainErr.Kind())
+	assert.Empty(t, repo.created)
+	assert.Empty(t, storage.objects)
+}
+
 func TestService_UploadForTransaction(t *testing.T) {
 	repo, storage := newFakeRepo(), newFakeStorage()
 	svc, _ := newService(repo, storage)

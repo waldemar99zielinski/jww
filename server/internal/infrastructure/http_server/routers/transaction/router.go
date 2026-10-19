@@ -6,15 +6,19 @@ import (
 	"jww/internal/infrastructure/http_server/kernel"
 )
 
-// Mount registers transaction CRUD plus the transaction-scoped attachment
-// routes. The nested attachment routes require the attachment to belong to the
-// path transaction.
+// Mount registers transaction CRUD plus the transaction-scoped sub-transaction
+// and attachment routes. The nested sub-transaction/attachment routes require
+// the child to belong to the path transaction.
 func Mount(_, protected chi.Router, deps *kernel.Deps) {
 	protected.Post("/v1/transactions", createTransactionHandler(deps))
 	protected.Get("/v1/transactions", listTransactionsHandler(deps))
 	protected.Get("/v1/transactions/{transactionID}", getTransactionHandler(deps))
 	protected.Patch("/v1/transactions/{transactionID}", updateTransactionHandler(deps))
 	protected.Delete("/v1/transactions/{transactionID}", deleteTransactionHandler(deps))
+
+	protected.Post("/v1/transactions/{transactionID}/sub-transactions", createSubTransactionHandler(deps))
+	protected.Patch("/v1/transactions/{transactionID}/sub-transactions/{subTransactionID}", updateSubTransactionHandler(deps))
+	protected.Delete("/v1/transactions/{transactionID}/sub-transactions/{subTransactionID}", deleteSubTransactionHandler(deps))
 
 	protected.Post("/v1/transactions/{transactionID}/attachments", uploadAttachmentHandler(deps))
 	protected.Put("/v1/transactions/{transactionID}/attachments/{attachmentID}", attachAttachmentHandler(deps))

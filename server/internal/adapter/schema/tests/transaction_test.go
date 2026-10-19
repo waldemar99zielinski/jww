@@ -113,10 +113,10 @@ func TestTransactionUpdateRequest_Validate(t *testing.T) {
 // fields are distinguished: only present, non-null fields become non-nil.
 func TestTransactionUpdateRequest_JSONPresence(t *testing.T) {
 	var req schema.TransactionUpdateRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"amount":"12.34","description":"","category_id":null,"created_at":"2024-03-15T12:30:00Z"}`), &req))
+	require.NoError(t, json.Unmarshal([]byte(`{"amount":1234,"description":"","category_id":null,"created_at":"2024-03-15T12:30:00Z"}`), &req))
 
 	require.NotNil(t, req.Amount)
-	assert.Equal(t, domain.Money(1234), *req.Amount, "a quoted decimal must parse as money")
+	assert.Equal(t, domain.Money(1234), *req.Amount, "the bare integer is already cents")
 	require.NotNil(t, req.Description)
 	assert.Equal(t, "", *req.Description, "an explicit empty string is a real value")
 	require.NotNil(t, req.CreatedAt)

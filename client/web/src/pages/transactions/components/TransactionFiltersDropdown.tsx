@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { TransactionSortOrder } from '@/api/transactions'
 import { IconChevronDown } from '@/components/icons'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
@@ -9,7 +10,7 @@ import { SelectInput } from '@/components/ui/SelectInput'
 import { TextInput } from '@/components/ui/TextInput'
 import { getCategoryVisual } from '@/lib/categoryVisuals'
 import { cssVars } from '@/lib/cssVars'
-import { filterLabels } from '../filterLabels'
+import { filterLabels, sortOrderLabels } from '../filterLabels'
 import type { TransactionFilterValue, TransactionsViewProps } from '../types'
 import { FilterButton } from './FilterButton'
 
@@ -29,6 +30,8 @@ type TransactionFiltersDropdownProps = Pick<
   | 'onDateFromChange'
   | 'dateTo'
   | 'onDateToChange'
+  | 'sortOrder'
+  | 'onSortOrderChange'
 > & {
   align?: 'left' | 'right'
   compact?: boolean
@@ -49,6 +52,8 @@ export function TransactionFiltersDropdown({
   onDateFromChange,
   dateTo,
   onDateToChange,
+  sortOrder,
+  onSortOrderChange,
   align = 'right',
   compact = false,
 }: TransactionFiltersDropdownProps) {
@@ -59,6 +64,7 @@ export function TransactionFiltersDropdown({
   const [draftNameFilter, setDraftNameFilter] = useState(nameFilter)
   const [draftDateFrom, setDraftDateFrom] = useState(dateFrom)
   const [draftDateTo, setDraftDateTo] = useState(dateTo)
+  const [draftSortOrder, setDraftSortOrder] = useState<TransactionSortOrder>(sortOrder)
   const rootRef = useRef<HTMLDivElement>(null)
   const hasInvalidDateRange = draftDateFrom !== '' && draftDateTo !== '' && draftDateFrom > draftDateTo
   const activeFilters = [
@@ -77,6 +83,7 @@ export function TransactionFiltersDropdown({
     draftDateFrom !== '',
     draftDateTo !== '',
   ].filter(Boolean).length
+  const draftHasChanges = activeDraftFilters > 0 || draftSortOrder !== 'desc'
   const userOptions = useMemo<SearchableSelectOption[]>(
     () =>
       users.map((member) => ({
@@ -116,6 +123,7 @@ export function TransactionFiltersDropdown({
     setDraftNameFilter(nameFilter)
     setDraftDateFrom(dateFrom)
     setDraftDateTo(dateTo)
+    setDraftSortOrder(sortOrder)
   }
 
   const applyDraft = useCallback(() => {
@@ -126,6 +134,7 @@ export function TransactionFiltersDropdown({
     onNameFilterChange(draftNameFilter)
     onDateFromChange(draftDateFrom)
     onDateToChange(draftDateTo)
+    onSortOrderChange(draftSortOrder)
     return true
   }, [
     draftCategoryFilter,
@@ -133,6 +142,7 @@ export function TransactionFiltersDropdown({
     draftDateTo,
     draftFilter,
     draftNameFilter,
+    draftSortOrder,
     draftUserFilter,
     hasInvalidDateRange,
     onCategoryFilterChange,
@@ -140,6 +150,7 @@ export function TransactionFiltersDropdown({
     onDateToChange,
     onFilterChange,
     onNameFilterChange,
+    onSortOrderChange,
     onUserFilterChange,
   ])
 
@@ -165,6 +176,7 @@ export function TransactionFiltersDropdown({
     setDraftNameFilter('')
     setDraftDateFrom('')
     setDraftDateTo('')
+    setDraftSortOrder('desc')
   }
 
   function toggleFilters() {
@@ -178,18 +190,17 @@ export function TransactionFiltersDropdown({
 
   const fields = (
     <div className="grid gap-3">
-      <div className="flex flex-col gap-1.5 text-[11.5px] font-bold uppercase tracking-wide text-muted">
-        User
+      <FieldLabel label="User">
         <SearchableSelect
           value={draftUserFilter}
           onChange={setDraftUserFilter}
           options={userOptions}
-          placeholder="Current user"
-          emptyOptionLabel="Current user"
+          placeholder="All users"
+          emptyOptionLabel="All users"
           searchPlaceholder="Search users"
           emptyMessage="No users found"
         />
-      </div>
+      </FieldLabel>
 
       <FieldLabel label="Type">
         <SelectInput
@@ -238,12 +249,26 @@ export function TransactionFiltersDropdown({
         <DateInput label="To" value={draftDateTo} min={draftDateFrom || undefined} invalid={hasInvalidDateRange} onChange={setDraftDateTo} />
       </div>
       {hasInvalidDateRange && <p className="m-0 text-[11.5px] text-critical">From date must be before To date.</p>}
+
+      <FieldLabel label="Order">
+        <SelectInput
+          value={draftSortOrder}
+          onChange={(e) => setDraftSortOrder(e.target.value as TransactionSortOrder)}
+          icon={<IconChevronDown className="h-4 w-4" />}
+        >
+          {Object.entries(sortOrderLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </SelectInput>
+      </FieldLabel>
     </div>
   )
 
   const actions = (
     <div className="grid grid-cols-2 gap-2">
-      <Button variant="secondary" disabled={activeDraftFilters === 0} onClick={clearFilters} className="justify-center">
+      <Button variant="secondary" disabled={!draftHasChanges} onClick={clearFilters} className="justify-center">
         Reset
       </Button>
       <Button variant="primary" disabled={hasInvalidDateRange} onClick={closeWithApply} className="justify-center">
@@ -261,7 +286,7 @@ export function TransactionFiltersDropdown({
           open={filtersOpen}
           onClose={closeWithApply}
           title="Filter transactions"
-          description="Narrow the list by user, type, category, date, or name."
+          description="Filter and sort the list by user, type, category, date, name, or amount."
           footer={actions}
         >
           {fields}
@@ -275,7 +300,7 @@ export function TransactionFiltersDropdown({
           >
             <div className="mb-3">
               <p className="m-0 text-sm font-bold text-ink">Filter transactions</p>
-              <p className="m-0 text-xs text-muted">Narrow the list by user, type, category, date, or name.</p>
+              <p className="m-0 text-xs text-muted">Filter and sort the list by user, type, category, date, name, or amount.</p>
             </div>
             {fields}
             <div className="mt-4">{actions}</div>

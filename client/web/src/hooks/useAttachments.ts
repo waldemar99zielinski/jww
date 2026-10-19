@@ -4,6 +4,7 @@ import {
   deleteTransactionAttachment,
   extractTransactionPrefill,
   uploadDraftAttachment,
+  uploadTransactionAttachment,
 } from '@/api/attachments'
 
 /**
@@ -15,6 +16,22 @@ export function useUploadDraftAttachment() {
   return useMutation({ mutationFn: uploadDraftAttachment })
 }
 
+/**
+ * Uploads a file directly onto an existing transaction. Refreshes the transaction queries so the
+ * detail screen's attachment list picks up the new row after the server responds.
+ */
+export function useUploadTransactionAttachment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transactionId, file }: { transactionId: number; file: File }) =>
+      uploadTransactionAttachment(transactionId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['summary'] })
+    },
+  })
+}
+
 export function useDeleteDraftAttachment() {
   return useMutation({ mutationFn: deleteDraftAttachment })
 }
@@ -22,8 +39,8 @@ export function useDeleteDraftAttachment() {
 /** Reads an uploaded draft into proposed field values. Pass a `signal` to cancel. */
 export function useExtractTransactionPrefill() {
   return useMutation({
-    mutationFn: ({ attachmentId, signal }: { attachmentId: string; signal?: AbortSignal }) =>
-      extractTransactionPrefill(attachmentId, signal),
+    mutationFn: ({ attachmentIds, signal }: { attachmentIds: string[]; signal?: AbortSignal }) =>
+      extractTransactionPrefill(attachmentIds, signal),
   })
 }
 

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createTransaction,
+  deleteTransaction,
   getTransaction,
   listTransactions,
   updateTransaction,
@@ -45,6 +46,23 @@ export function useUpdateTransaction() {
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: UpdateTransactionInput }) => updateTransaction(id, input),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['summary'] })
+    },
+  })
+}
+
+/**
+ * Deletes a transaction along with its line items and attachments. The detail query is removed
+ * (not invalidated, which would immediately refetch the now-404 record); the list and summary are
+ * refreshed so the deleted row and its totals disappear.
+ */
+export function useDeleteTransaction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteTransaction,
+    onSuccess: (_data, id) => {
+      queryClient.removeQueries({ queryKey: ['transactions', 'detail', id] })
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['summary'] })
     },

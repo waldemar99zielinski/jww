@@ -80,6 +80,13 @@ func transactionFilterFromRequest(r *http.Request) (transactionservice.Filter, e
 		}
 		filter.CreatedTo = &createdTo
 	}
+	filter.Sort = transactionservice.Sort{
+		Key:   transactionservice.SortKey(q.Get("sort_key")),
+		Order: transactionservice.SortOrder(q.Get("sort_order")),
+	}
+	if err := filter.Sort.Validate(); err != nil {
+		return transactionservice.Filter{}, err
+	}
 
 	return filter, nil
 }

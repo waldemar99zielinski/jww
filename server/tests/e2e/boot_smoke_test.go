@@ -46,6 +46,8 @@ func TestCmdServerBoots(t *testing.T) {
 		"DATABASE_URL="+pgPool.DSN,
 		"JWT_SECRET_KEY=e2e-boot-smoke-throwaway-secret",
 		"LOG_PRETTY=false",
+		"OPENAI_API_KEY=e2e-boot-smoke-throwaway-key",
+		"PUBLIC_API_BASE_URL="+addr,
 		"OBJECT_STORAGE_S3_BUCKET="+minioStore.Config.Bucket,
 		"OBJECT_STORAGE_S3_REGION="+minioStore.Config.Region,
 		"OBJECT_STORAGE_S3_ENDPOINT="+minioStore.Config.Endpoint,

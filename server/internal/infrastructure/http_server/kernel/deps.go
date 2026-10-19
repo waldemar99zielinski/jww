@@ -11,6 +11,7 @@ import (
 	"jww/internal/service/currency"
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
+	transaction_attachment_extraction "jww/internal/service/transaction_attachment_extraction"
 	"jww/internal/service/transaction_category"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
@@ -28,17 +29,18 @@ var httpLog = logger.New().WithComponent("http_server")
 // anything per request anymore; all business logic, including transaction
 // demarcation, lives in the service layer these were built from.
 type Deps struct {
-	AuthService                  *auth.Service
-	UserService                  *user.Service
-	SignupWorkflow               *workflow.SignupWorkflow
-	CurrencyService              *currency.Service
-	CurrencyExchangeRateWorkflow *workflow.CurrencyExchangeRateWorkflow
-	TransactionCategoryService   *transaction_category.Service
-	TransactionService           *transaction.Service
-	TransactionAttachmentService *transaction_attachment.Service
-	TransactionWorkflow          *workflow.TransactionWorkflow
-	SummaryWorkflow              *workflow.SummaryWorkflow
-	CorsOrigins                  []string
+	AuthService                            *auth.Service
+	UserService                            *user.Service
+	SignupWorkflow                         *workflow.SignupWorkflow
+	CurrencyService                        *currency.Service
+	CurrencyExchangeRateWorkflow           *workflow.CurrencyExchangeRateWorkflow
+	TransactionCategoryService             *transaction_category.Service
+	TransactionService                     *transaction.Service
+	TransactionAttachmentService           *transaction_attachment.Service
+	TransactionAttachmentExtractionService *transaction_attachment_extraction.Service
+	TransactionWorkflow                    *workflow.TransactionWorkflow
+	SummaryWorkflow                        *workflow.SummaryWorkflow
+	CorsOrigins                            []string
 	// MaxBodyBytes caps every request body; <= 0 falls back to
 	// defaultMaxBodyBytes (see LimitRequestBody in middleware.go).
 	MaxBodyBytes int64

@@ -4,10 +4,10 @@ import type { TransactionAttachmentDto, TransactionPrefillDto } from '@/api/type
 import { isDesignMode } from '@/lib/designMode'
 
 /**
- * Uploads one file as an unattached draft (transaction_id null). The returned id is passed as
- * `attachment_ids` when creating the transaction, which links the draft atomically. The server
- * streams the body and takes the original filename/media type from the multipart part, so the
- * FormData part must be named `file`.
+ * Uploads one file as an unattached draft (transaction_id null). The server normalizes supported
+ * image formats before storage. The returned id is passed as `attachment_ids` when creating the
+ * transaction, which links the draft atomically. The server streams the body and takes the original
+ * filename/media type from the multipart part, so the FormData part must be named `file`.
  */
 export function uploadDraftAttachment(file: File): Promise<TransactionAttachmentDto> {
   if (isDesignMode()) return mockDelay(mockApi.uploadDraftAttachment(file))
@@ -16,10 +16,27 @@ export function uploadDraftAttachment(file: File): Promise<TransactionAttachment
   return apiFetch<TransactionAttachmentDto>('/transaction-attachments', { method: 'POST', body })
 }
 
+/**
+ * Uploads one file directly onto an existing transaction (the transaction-first path). The server
+ * stores the object, inserts the linked metadata row, and the GET detail response then includes it.
+ */
+export function uploadTransactionAttachment(transactionId: number, file: File): Promise<TransactionAttachmentDto> {
+  if (isDesignMode()) return mockDelay(mockApi.uploadTransactionAttachment(transactionId, file))
+  const body = new FormData()
+  body.append('file', file)
+  return apiFetch<TransactionAttachmentDto>(`/transactions/${transactionId}/attachments`, { method: 'POST', body })
+}
+
 /** Deletes an unattached draft (used when the user removes an attachment before saving). */
 export function deleteDraftAttachment(attachmentId: string): Promise<void> {
   if (isDesignMode()) return mockDelay(mockApi.deleteDraftAttachment(attachmentId))
   return apiFetch<void>(`/transaction-attachments/${attachmentId}`, { method: 'DELETE' })
+}
+
+/** Downloads one draft attachment's bytes (protected route, forced attachment disposition). */
+export function downloadDraftAttachment(attachmentId: string): Promise<Blob> {
+  if (isDesignMode()) return mockDelay(mockApi.downloadAttachment())
+  return apiDownload(`/transaction-attachments/${attachmentId}/download`)
 }
 
 /** Deletes one attachment that is already linked to a transaction (transaction-scoped route). */
@@ -61,10 +78,11 @@ export function downloadTransactionAttachment(transactionId: number, attachmentI
  * upload. `signal` is the cancel path; `apiFetch` spreads `init`, so no change to `client.ts` is
  * needed.
  */
-export function extractTransactionPrefill(attachmentId: string, signal?: AbortSignal): Promise<TransactionPrefillDto> {
-  if (isDesignMode()) return mockDelay(mockApi.extractTransactionPrefill(attachmentId), 1400)
-  return apiFetch<TransactionPrefillDto>(`/transaction-attachments/${attachmentId}/extraction`, {
+export function extractTransactionPrefill(attachmentIds: string[], signal?: AbortSignal): Promise<TransactionPrefillDto> {
+  if (isDesignMode()) return mockDelay(mockApi.extractTransactionPrefill(attachmentIds), 1400)
+  return apiFetch<TransactionPrefillDto>('/transaction-attachments/extraction', {
     method: 'POST',
+    body: JSON.stringify({ attachment_ids: attachmentIds }),
     signal,
   })
 }

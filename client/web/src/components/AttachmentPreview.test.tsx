@@ -1,14 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { downloadTransactionAttachment } from '@/api/attachments'
 import { server } from '@/test/server'
-import type { TransactionAttachmentItem } from '../types'
-import { AttachmentPreview } from './AttachmentPreview'
+import { AttachmentPreview, type AttachmentPreviewItem } from './AttachmentPreview'
 
-function attachment(overrides: Partial<TransactionAttachmentItem>): TransactionAttachmentItem {
+function attachment(overrides: Partial<AttachmentPreviewItem>): AttachmentPreviewItem {
   return {
     id: 'attachment-1',
-    filename: 'receipt.jpg',
+    filename: 'attachment.jpg',
     mediaType: 'image/jpeg',
     byteSize: 20480,
     previewUrl: '/api/v1/attachment-content?grant=grant-1',
@@ -16,13 +16,13 @@ function attachment(overrides: Partial<TransactionAttachmentItem>): TransactionA
   }
 }
 
-function renderPreview(item: TransactionAttachmentItem, props: Partial<Parameters<typeof AttachmentPreview>[0]> = {}) {
+function renderPreview(item: AttachmentPreviewItem, props: Partial<Parameters<typeof AttachmentPreview>[0]> = {}) {
   return render(
     <AttachmentPreview
-      transactionId={1}
       attachment={item}
       isDownloading={false}
       onDownload={vi.fn()}
+      loadBlob={(attachmentId) => downloadTransactionAttachment(1, attachmentId)}
       onClose={vi.fn()}
       {...props}
     />,
@@ -45,10 +45,10 @@ describe('AttachmentPreview', () => {
     window.URL.revokeObjectURL = vi.fn()
   })
 
-  it('renders an image from its grant URL without fetching the blob', () => {
+  it('renders an image from its inline URL without fetching the blob', () => {
     renderPreview(attachment({}))
 
-    expect(screen.getByAltText('Preview of receipt.jpg')).toHaveAttribute(
+    expect(screen.getByAltText('Preview of attachment.jpg')).toHaveAttribute(
       'src',
       '/api/v1/attachment-content?grant=grant-1',
     )
@@ -60,7 +60,7 @@ describe('AttachmentPreview', () => {
     // The source URL is set immediately, but the image bytes are still in flight.
     expect(screen.getByRole('status', { name: 'Loading preview' })).toBeInTheDocument()
 
-    fireEvent.load(screen.getByAltText('Preview of receipt.jpg'))
+    fireEvent.load(screen.getByAltText('Preview of attachment.jpg'))
 
     expect(screen.queryByRole('status', { name: 'Loading preview' })).not.toBeInTheDocument()
   })
@@ -71,7 +71,7 @@ describe('AttachmentPreview', () => {
     expect(screen.getByTitle('Preview of statement.pdf').tagName).toBe('IFRAME')
   })
 
-  it('fetches and renders plain text through the download route', async () => {
+  it('fetches and renders plain text through the provided blob loader', async () => {
     server.use(
       http.get('*/api/v1/transactions/:id/attachments/:attachmentID/download', () =>
         new HttpResponse('amount,label\n12.50,coffee', { headers: { 'Content-Type': 'text/csv' } }),
@@ -94,7 +94,13 @@ describe('AttachmentPreview', () => {
   })
 
   it('explains when a file type cannot be previewed', async () => {
-    renderPreview(attachment({ filename: 'report.docx', mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', previewUrl: null }))
+    renderPreview(
+      attachment({
+        filename: 'report.docx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        previewUrl: null,
+      }),
+    )
 
     expect(await screen.findByText(/can't be previewed/i)).toBeInTheDocument()
   })
@@ -115,7 +121,7 @@ describe('AttachmentPreview', () => {
     const item = attachment({})
     renderPreview(item, { onDownload })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Download receipt.jpg' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Download attachment.jpg' }))
     expect(onDownload).toHaveBeenCalledWith(item)
   })
 

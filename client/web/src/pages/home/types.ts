@@ -9,6 +9,8 @@ export interface CategoryBreakdownItem {
 export interface HomeViewProps {
   displayName: string
   monthLabel: string
+  /** Currency the summary totals are reported in (the configured base currency). */
+  currencyCode: string
   balance: number
   totalIncome: number
   totalExpense: number

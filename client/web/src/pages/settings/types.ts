@@ -19,6 +19,7 @@ export interface SettingsViewProps {
   displayName: string
   username: string
   currencyCode: string | undefined
+  version: string
   onLogout: () => void
   install: InstallViewProps
 }

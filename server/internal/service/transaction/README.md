@@ -10,7 +10,8 @@
   - `GetByID(ctx, int64, uow...)` — nil → `domain.NewTransactionNotFoundError(id)`.
   - `List(ctx, *Filter, uow...)` — passthrough.
   - `Update` owns its UoW. `Delete(ctx, transaction, uow...)` owns one when called standalone and otherwise forwards the caller-owned UoW without finishing or restoring it.
-- `filter.go` — the one shared transaction query object: `Filter{ UserID, CategoryID, Type, CurrencyCode, Source, CreatedFrom, CreatedTo }`. Related-resource fields are flattened and explicitly named instead of carrying nested domain structs. `Validate()` covers date-range ordering.
+- `filter.go` — the one shared transaction query object: `Filter{ UserID, CategoryID, Type, CurrencyCode, Source, CreatedFrom, CreatedTo, Sort }`. Related-resource fields are flattened and explicitly named instead of carrying nested domain structs. `Validate()` covers date-range ordering and sort key/order validation.
+- `sort.go` — `Sort{ Key, Order }` with `SortKeyDate` and `SortOrderAsc`/`SortOrderDesc`. `Normalize()` fills the default `date`/`desc` ordering.
 
 ## Rules
 

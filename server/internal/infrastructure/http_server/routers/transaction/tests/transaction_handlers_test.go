@@ -23,6 +23,7 @@ import (
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
 	"jww/internal/service/transaction_category"
+	"jww/internal/service/transaction_sub_transaction"
 	"jww/internal/service/unit_of_work"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
@@ -102,8 +103,9 @@ func (fakePasswordHasher) Hash(password string) (string, error) { return "hashed
 func (fakePasswordHasher) Verify(password, hash string) bool    { return "hashed:"+password == hash }
 
 type fakeTransactionRepo struct {
-	byID   map[int64]domain.Transaction
-	nextID int64
+	byID           map[int64]domain.Transaction
+	nextID         int64
+	lastListFilter *transaction.Filter
 }
 
 func (f *fakeTransactionRepo) Create(
@@ -138,6 +140,7 @@ func (f *fakeTransactionRepo) GetByID(_ domain.AppContext, id int64, _ ...unit_o
 }
 
 func (f *fakeTransactionRepo) List(_ domain.AppContext, filter *transaction.Filter, _ ...unit_of_work.UnitOfWork) ([]domain.Transaction, error) {
+	f.lastListFilter = filter
 	var out []domain.Transaction
 	for _, t := range f.byID {
 		if filter != nil && filter.UserID != nil && t.User.ID != *filter.UserID {
@@ -156,6 +159,51 @@ func (f *fakeTransactionRepo) Update(_ domain.AppContext, t domain.Transaction, 
 func (f *fakeTransactionRepo) Delete(_ domain.AppContext, t domain.Transaction, _ ...unit_of_work.UnitOfWork) error {
 	delete(f.byID, t.ID)
 	return nil
+}
+
+type fakeSubTransactionRepo struct {
+	byID map[uuid.UUID]domain.TransactionSubTransaction
+}
+
+func newFakeSubTransactionRepo() *fakeSubTransactionRepo {
+	return &fakeSubTransactionRepo{byID: map[uuid.UUID]domain.TransactionSubTransaction{}}
+}
+
+func (f *fakeSubTransactionRepo) Create(_ domain.AppContext, s domain.TransactionSubTransaction, _ ...unit_of_work.UnitOfWork) error {
+	f.byID[s.ID] = s
+	return nil
+}
+
+func (f *fakeSubTransactionRepo) Update(_ domain.AppContext, s domain.TransactionSubTransaction, _ ...unit_of_work.UnitOfWork) error {
+	f.byID[s.ID] = s
+	return nil
+}
+
+func (f *fakeSubTransactionRepo) Delete(_ domain.AppContext, s domain.TransactionSubTransaction, _ ...unit_of_work.UnitOfWork) error {
+	delete(f.byID, s.ID)
+	return nil
+}
+
+func (f *fakeSubTransactionRepo) GetByID(_ domain.AppContext, id uuid.UUID, _ ...unit_of_work.UnitOfWork) (*domain.TransactionSubTransaction, error) {
+	s, ok := f.byID[id]
+	if !ok {
+		return nil, nil
+	}
+	return &s, nil
+}
+
+func (f *fakeSubTransactionRepo) ListByTransactionIDs(_ domain.AppContext, transactionIDs []int64, _ ...unit_of_work.UnitOfWork) ([]domain.TransactionSubTransaction, error) {
+	want := make(map[int64]struct{}, len(transactionIDs))
+	for _, id := range transactionIDs {
+		want[id] = struct{}{}
+	}
+	var out []domain.TransactionSubTransaction
+	for _, s := range f.byID {
+		if _, ok := want[s.TransactionID]; ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 
 type fakeUoWManager struct{}
@@ -209,11 +257,12 @@ func newTestRouter(t *testing.T) (*chi.Mux, *testFixtures) {
 		SecretKey: "transaction-handler-test-secret", Algorithm: "HS256", AccessTokenExpireMinutes: 60,
 	}, 5*time.Minute)
 	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStorage, nil, grants)
+	subTransactionService := transaction_sub_transaction.NewService(newFakeSubTransactionRepo(), fakeUoWManager{})
 
 	deps := &kernel.Deps{
 		TransactionService:           transactionService,
 		TransactionAttachmentService: attachmentService,
-		TransactionWorkflow:          workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, attachmentService, fakeUoWManager{}),
+		TransactionWorkflow:          workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, attachmentService, subTransactionService, fakeUoWManager{}),
 	}
 	r := chi.NewRouter()
 	transactionrouter.Mount(r, r, deps)
@@ -245,7 +294,7 @@ func decodeData(t *testing.T, rec *httptest.ResponseRecorder, v any) {
 func TestCreateTransactionHandler(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		r, fx := newTestRouter(t)
-		body := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"Groceries run","description":""}`
+		body := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"Groceries run","description":""}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/transactions", bytes.NewBufferString(body))
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -259,7 +308,7 @@ func TestCreateTransactionHandler(t *testing.T) {
 
 	t.Run("unknown category is not found", func(t *testing.T) {
 		r, fx := newTestRouter(t)
-		body := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code + `","category_id":"` + uuid.NewString() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"X"}`
+		body := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code + `","category_id":"` + uuid.NewString() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"X"}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/transactions", bytes.NewBufferString(body))
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -278,7 +327,7 @@ func TestCreateTransactionHandler(t *testing.T) {
 	t.Run("accepts an explicit created_at", func(t *testing.T) {
 		r, fx := newTestRouter(t)
 		const when = "2024-03-15T12:30:00Z"
-		body := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"Dated","created_at":"` + when + `"}`
+		body := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"Dated","created_at":"` + when + `"}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/transactions", bytes.NewBufferString(body))
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -293,7 +342,7 @@ func TestCreateTransactionHandler(t *testing.T) {
 
 	t.Run("omitting created_at defaults to now", func(t *testing.T) {
 		r, fx := newTestRouter(t)
-		body := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"Undated"}`
+		body := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"Undated"}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/transactions", bytes.NewBufferString(body))
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -306,7 +355,7 @@ func TestCreateTransactionHandler(t *testing.T) {
 
 	t.Run("zero or malformed created_at is bad request", func(t *testing.T) {
 		r, fx := newTestRouter(t)
-		base := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"X"`
+		base := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code + `","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() + `","source":"manual","name":"X"`
 		assert.Equal(t, http.StatusBadRequest, postCreate(t, r, base+`,"created_at":"0001-01-01T00:00:00Z"}`).Code)
 		assert.Equal(t, http.StatusBadRequest, postCreate(t, r, base+`,"created_at":"not-a-date"}`).Code)
 	})
@@ -414,6 +463,53 @@ func TestListTransactionsHandler(t *testing.T) {
 		r.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
+
+	t.Run("passes the sort key and order to the filter", func(t *testing.T) {
+		r, fx := newTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/v1/transactions?sort_key=date&sort_order=asc", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.NotNil(t, fx.transactionRepo.lastListFilter)
+		assert.Equal(t, transaction.SortKeyDate, fx.transactionRepo.lastListFilter.Sort.Key)
+		assert.Equal(t, transaction.SortOrderAsc, fx.transactionRepo.lastListFilter.Sort.Order)
+	})
+
+	t.Run("omitting sort params leaves the defaults to the service", func(t *testing.T) {
+		r, fx := newTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/v1/transactions", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.NotNil(t, fx.transactionRepo.lastListFilter)
+		assert.Equal(t, transaction.Sort{}, fx.transactionRepo.lastListFilter.Sort)
+	})
+
+	t.Run("invalid sort_key query param", func(t *testing.T) {
+		r, _ := newTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/v1/transactions?sort_key=bogus", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("amount is not a sortable key", func(t *testing.T) {
+		r, _ := newTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/v1/transactions?sort_key=amount", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("invalid sort_order query param", func(t *testing.T) {
+		r, _ := newTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/v1/transactions?sort_order=bogus", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
 }
 
 func TestDeleteTransactionHandler(t *testing.T) {
@@ -468,7 +564,7 @@ func TestUpdateTransactionHandler(t *testing.T) {
 		previewable.TransactionID = &tr.ID
 		fx.attachmentRepo.byID[previewable.ID] = previewable
 
-		body := `{"type":"income","amount":"12.34","currency_code":"EUR","category_id":"` + fx.incomeCategory.ID.String() +
+		body := `{"type":"income","amount":1234,"currency_code":"EUR","category_id":"` + fx.incomeCategory.ID.String() +
 			`","user_id":"` + fx.otherUser.ID.String() + `","source":"recurring","name":"Salary","description":"march"}`
 		rec := patchTransaction(t, r, tr.ID, body)
 

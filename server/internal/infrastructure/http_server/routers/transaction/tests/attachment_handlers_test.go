@@ -47,7 +47,7 @@ func TestCreateTransactionWithAttachmentIDs(t *testing.T) {
 		draft := fx.attachmentRepo.seedDraft()
 		fx.attachmentStorage.objects[draft.StorageKey] = []byte("bytes")
 
-		body := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code +
+		body := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code +
 			`","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() +
 			`","source":"manual","name":"Groceries","attachment_ids":["` + draft.ID.String() + `"]}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/transactions", bytes.NewBufferString(body))
@@ -69,7 +69,7 @@ func TestCreateTransactionWithAttachmentIDs(t *testing.T) {
 	t.Run("duplicate ids are a 400", func(t *testing.T) {
 		r, fx := newTestRouter(t)
 		id := uuid.NewString()
-		body := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code +
+		body := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code +
 			`","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() +
 			`","source":"manual","name":"Groceries","attachment_ids":["` + id + `","` + id + `"]}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/transactions", bytes.NewBufferString(body))
@@ -81,7 +81,7 @@ func TestCreateTransactionWithAttachmentIDs(t *testing.T) {
 
 	t.Run("unknown draft is a 404", func(t *testing.T) {
 		r, fx := newTestRouter(t)
-		body := `{"type":"expense","amount":"10.00","currency_code":"` + fx.currency.Code +
+		body := `{"type":"expense","amount":1000,"currency_code":"` + fx.currency.Code +
 			`","category_id":"` + fx.category.ID.String() + `","user_id":"` + fx.user.ID.String() +
 			`","source":"manual","name":"Groceries","attachment_ids":["` + uuid.NewString() + `"]}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/transactions", bytes.NewBufferString(body))

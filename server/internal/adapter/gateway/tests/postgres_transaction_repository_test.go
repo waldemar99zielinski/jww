@@ -163,22 +163,46 @@ func TestPostgresTransactionRepository_List_FiltersByExplicitFields(t *testing.T
 		assert.NotContains(t, ids, oldExpense.ID)
 	})
 
-	t.Run("no filter returns everything by id descending", func(t *testing.T) {
+	t.Run("no filter returns everything by date descending", func(t *testing.T) {
 		list, err := repo.List(appCtx, nil, uow)
 		require.NoError(t, err)
 		require.Len(t, list, 3)
 		assert.Equal(t, []int64{recentIncome.ID, recentExpense.ID, oldExpense.ID}, idsOf(list))
 	})
 
-	t.Run("empty filter returns everything by id descending", func(t *testing.T) {
+	t.Run("empty filter returns everything by date descending", func(t *testing.T) {
 		list, err := repo.List(appCtx, &transaction.Filter{}, uow)
 		require.NoError(t, err)
 		require.Len(t, list, 3)
 		assert.Equal(t, []int64{recentIncome.ID, recentExpense.ID, oldExpense.ID}, idsOf(list))
 	})
+
+	t.Run("sort by date ascending", func(t *testing.T) {
+		list, err := repo.List(appCtx, &transaction.Filter{
+			Sort: transaction.Sort{Key: transaction.SortKeyDate, Order: transaction.SortOrderAsc},
+		}, uow)
+		require.NoError(t, err)
+		assert.Equal(t, []int64{oldExpense.ID, recentExpense.ID, recentIncome.ID}, idsOf(list))
+	})
+
+	t.Run("sort key defaults to date when only the order is supplied", func(t *testing.T) {
+		list, err := repo.List(appCtx, &transaction.Filter{
+			Sort: transaction.Sort{Order: transaction.SortOrderAsc},
+		}, uow)
+		require.NoError(t, err)
+		assert.Equal(t, []int64{oldExpense.ID, recentExpense.ID, recentIncome.ID}, idsOf(list))
+	})
+
+	t.Run("sort order defaults to descending when only the key is supplied", func(t *testing.T) {
+		list, err := repo.List(appCtx, &transaction.Filter{
+			Sort: transaction.Sort{Key: transaction.SortKeyDate},
+		}, uow)
+		require.NoError(t, err)
+		assert.Equal(t, []int64{recentIncome.ID, recentExpense.ID, oldExpense.ID}, idsOf(list))
+	})
 }
 
-func TestPostgresTransactionRepository_List_DefaultsToIDDescending(t *testing.T) {
+func TestPostgresTransactionRepository_List_DefaultsToDateDescending(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	appCtx := pgtest.AppContext(ctx)
@@ -200,8 +224,8 @@ func TestPostgresTransactionRepository_List_DefaultsToIDDescending(t *testing.T)
 	list, err := repo.List(appCtx, nil, uow)
 	require.NoError(t, err)
 	require.Len(t, list, 2)
-	assert.Equal(t, []int64{higherIDOlderTime.ID, lowerIDNewerTime.ID}, idsOf(list),
-		"default order must follow id, not created_at")
+	assert.Equal(t, []int64{lowerIDNewerTime.ID, higherIDOlderTime.ID}, idsOf(list),
+		"default order must follow created_at, not id")
 }
 
 func idsOf(list []domain.Transaction) []int64 {

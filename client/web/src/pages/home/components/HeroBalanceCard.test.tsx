@@ -6,16 +6,16 @@ import { normalizeText } from '@/test/normalizeText'
 
 describe('HeroBalanceCard', () => {
   it('renders the formatted balance, income, and expenses', () => {
-    render(<HeroBalanceCard balance={2457.5} income={2500} expenses={42.5} />)
+    render(<HeroBalanceCard balance={2457.5} income={2500} expenses={42.5} currencyCode="EUR" />)
 
-    expect(screen.getByText(normalizeText(formatAmount(2457.5)))).toBeInTheDocument()
-    expect(screen.getByText(normalizeText(formatSignedAmount(2500, 'income')))).toBeInTheDocument()
-    expect(screen.getByText(normalizeText(formatSignedAmount(42.5, 'expense')))).toBeInTheDocument()
+    expect(screen.getByText(normalizeText(formatAmount(2457.5, 'EUR')))).toBeInTheDocument()
+    expect(screen.getByText(normalizeText(formatSignedAmount(2500, 'income', 'EUR')))).toBeInTheDocument()
+    expect(screen.getByText(normalizeText(formatSignedAmount(42.5, 'expense', 'EUR')))).toBeInTheDocument()
   })
 
   it('renders a negative balance using the plain (unsigned) formatter', () => {
-    render(<HeroBalanceCard balance={-50} income={0} expenses={50} />)
+    render(<HeroBalanceCard balance={-50} income={0} expenses={50} currencyCode="EUR" />)
 
-    expect(screen.getByText(normalizeText(formatAmount(-50)))).toBeInTheDocument()
+    expect(screen.getByText(normalizeText(formatAmount(-50, 'EUR')))).toBeInTheDocument()
   })
 })

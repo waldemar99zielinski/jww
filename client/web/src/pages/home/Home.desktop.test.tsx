@@ -8,6 +8,7 @@ import { fixtureTransactions } from '@/test/fixtures'
 const baseProps: HomeViewProps = {
   displayName: 'Waldemar',
   monthLabel: 'October 2026',
+  currencyCode: 'EUR',
   balance: 2457.5,
   totalIncome: 2500,
   totalExpense: 42.5,

@@ -7,7 +7,7 @@ import TransactionDetailMobile from './TransactionDetail.mobile'
 
 const imageAttachment: TransactionAttachmentItem = {
   id: 'attachment-1',
-  filename: 'receipt.jpg',
+  filename: 'attachment.jpg',
   mediaType: 'image/jpeg',
   byteSize: 20480,
   previewUrl: '/api/v1/attachment-content?grant=grant-1',
@@ -67,12 +67,20 @@ const baseProps: TransactionDetailViewProps = {
     { label: 'Category', value: 'Groceries' },
     { label: 'Date', value: '10 October 2026 · 09:30' },
   ],
+  subTransactions: [
+    { id: 'sub-1', name: 'Milk 2%', label: 'dairy', amount: '6,49 zł' },
+    { id: 'sub-2', name: 'Sourdough bread', label: 'bakery', amount: '5,99 zł' },
+  ],
   attachments: [imageAttachment, fileAttachment],
+  attachmentsUploading: false,
+  attachmentUploadError: false,
   downloadError: false,
   isLoading: false,
   isError: false,
   isEditing: false,
   onStartEdit: () => {},
+  onAddAttachment: () => {},
+  onRequestDelete: () => {},
   edit: editProps,
   onPreview: () => {},
   onOpenActions: () => {},
@@ -91,8 +99,50 @@ describe.each(variants)('TransactionDetail $name', ({ View }) => {
     expect(screen.getByText('Weekly shop')).toBeInTheDocument()
     expect(screen.getByText('−42,50 zł')).toBeInTheDocument()
     expect(screen.getByText('Expense')).toBeInTheDocument()
-    expect(screen.getByText('receipt.jpg')).toBeInTheDocument()
+    expect(screen.getByText('attachment.jpg')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+  })
+
+  it('lists the line items and asks to remove the transaction', async () => {
+    const user = userEvent.setup()
+    const onRequestDelete = vi.fn()
+    render(<View {...baseProps} onRequestDelete={onRequestDelete} />)
+
+    expect(screen.getByRole('heading', { name: 'Items' })).toBeInTheDocument()
+    expect(screen.getByText('Milk 2%')).toBeInTheDocument()
+    expect(screen.getByText('dairy')).toBeInTheDocument()
+    expect(screen.getByText('6,49 zł')).toBeInTheDocument()
+    expect(screen.getByText('Sourdough bread')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Remove transaction' }))
+
+    expect(onRequestDelete).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers an Add attachment action, including the empty and error states', async () => {
+    const user = userEvent.setup()
+    const onAddAttachment = vi.fn()
+    render(
+      <View
+        {...baseProps}
+        attachments={[]}
+        attachmentUploadError
+        onAddAttachment={onAddAttachment}
+      />,
+    )
+
+    expect(screen.getByText('No attachments yet.')).toBeInTheDocument()
+    expect(screen.getByText(/couldn't upload that file/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Add attachment' }))
+
+    expect(onAddAttachment).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables Add attachment while an upload is in flight', () => {
+    render(<View {...baseProps} attachments={[]} attachmentsUploading />)
+
+    expect(screen.getByRole('button', { name: 'Uploading…' })).toBeDisabled()
   })
 
   it('offers an Edit button next to Close and asks to start editing', async () => {
@@ -123,6 +173,8 @@ describe.each(variants)('TransactionDetail $name', ({ View }) => {
     expect(screen.getByLabelText('Date')).toHaveValue('2026-10-10')
     // …and the definition list is gone.
     expect(screen.queryByText('10 October 2026 · 09:30')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Items' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove transaction' })).not.toBeInTheDocument()
 
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
     // Untouched form: the secondary button cancels rather than resets.
@@ -161,7 +213,7 @@ describe.each(variants)('TransactionDetail $name', ({ View }) => {
     render(<View {...baseProps} />)
 
     // The row itself is the preview trigger, for the image and the plain-text file alike.
-    expect(screen.getByRole('button', { name: 'Preview receipt.jpg' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preview attachment.jpg' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Preview note.txt' })).toBeInTheDocument()
   })
 
@@ -180,7 +232,7 @@ describe.each(variants)('TransactionDetail $name', ({ View }) => {
     const onPreview = vi.fn()
     render(<View {...baseProps} onPreview={onPreview} />)
 
-    await user.click(screen.getByRole('button', { name: 'Preview receipt.jpg' }))
+    await user.click(screen.getByRole('button', { name: 'Preview attachment.jpg' }))
 
     expect(onPreview).toHaveBeenCalledWith(imageAttachment)
   })
@@ -189,13 +241,13 @@ describe.each(variants)('TransactionDetail $name', ({ View }) => {
     render(<View {...baseProps} attachments={[imageAttachment]} />)
 
     // The metadata is present, but the image bytes are still in flight → spinner in the slot.
-    expect(screen.getByRole('status', { name: 'Loading preview of receipt.jpg' })).toBeInTheDocument()
-    expect(screen.getByAltText('Preview of receipt.jpg')).toHaveClass('invisible')
+    expect(screen.getByRole('status', { name: 'Loading preview of attachment.jpg' })).toBeInTheDocument()
+    expect(screen.getByAltText('Preview of attachment.jpg')).toHaveClass('invisible')
 
-    fireEvent.load(screen.getByAltText('Preview of receipt.jpg'))
+    fireEvent.load(screen.getByAltText('Preview of attachment.jpg'))
 
-    expect(screen.queryByRole('status', { name: 'Loading preview of receipt.jpg' })).not.toBeInTheDocument()
-    expect(screen.getByAltText('Preview of receipt.jpg')).not.toHaveClass('invisible')
+    expect(screen.queryByRole('status', { name: 'Loading preview of attachment.jpg' })).not.toBeInTheDocument()
+    expect(screen.getByAltText('Preview of attachment.jpg')).not.toHaveClass('invisible')
   })
 
   it('falls back to the paperclip when an inline image cannot be rendered', () => {

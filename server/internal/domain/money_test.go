@@ -138,14 +138,14 @@ func TestExchangeRateConvertPanicsOnOverflow(t *testing.T) {
 	ExchangeRate(math.MaxInt64).Convert(Money(math.MaxInt64))
 }
 
-func TestMoneyJSONRoundTrip(t *testing.T) {
-	m, _ := ParseMoney("12.34")
+func TestMoneyJSONRoundTripUsesCents(t *testing.T) {
+	m := Money(1234)
 	data, err := m.MarshalJSON()
 	if err != nil {
 		t.Fatalf("MarshalJSON: %v", err)
 	}
-	if string(data) != "12.34" {
-		t.Errorf("MarshalJSON = %s, want bare 12.34", data)
+	if string(data) != "1234" {
+		t.Errorf("MarshalJSON = %s, want bare cents 1234", data)
 	}
 	var parsed Money
 	if err := parsed.UnmarshalJSON(data); err != nil {
@@ -155,10 +155,17 @@ func TestMoneyJSONRoundTrip(t *testing.T) {
 		t.Errorf("round trip = %d, want %d", parsed, m)
 	}
 	var quoted Money
-	if err := quoted.UnmarshalJSON([]byte(`"12.34"`)); err != nil {
+	if err := quoted.UnmarshalJSON([]byte(`"1234"`)); err != nil {
 		t.Fatalf("UnmarshalJSON quoted: %v", err)
 	}
 	if quoted != m {
 		t.Errorf("quoted round trip = %d, want %d", quoted, m)
+	}
+}
+
+func TestMoneyJSONRejectsMajorUnitDecimals(t *testing.T) {
+	var m Money
+	if err := m.UnmarshalJSON([]byte(`41.27`)); err == nil {
+		t.Fatal("decimal money must be rejected; the wire contract is integer cents")
 	}
 }

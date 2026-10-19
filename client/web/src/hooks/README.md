@@ -26,13 +26,15 @@ call these hooks, never TanStack Query's hooks directly.
 - `useAttachments.ts` wraps the attachment endpoints: the draft mutations
   (`useUploadDraftAttachment`, `useDeleteDraftAttachment`) invalidate nothing — a draft has no list
   of its own, and `useCreateTransaction` already invalidates the transaction/summary queries when
-  the draft is linked on save — while `useDeleteTransactionAttachment` (deleting a *linked*
-  attachment) invalidates `['transactions']` + `['summary']`, since the detail screen shows the row
-  it removes.
+  the draft is linked on save — while `useUploadTransactionAttachment` (adding a file to an existing
+  transaction) and `useDeleteTransactionAttachment` (deleting a *linked* attachment) invalidate
+  `['transactions']` + `['summary']`, since the detail screen shows the rows they change.
 - `useTransactions.ts` exposes `useTransactions(filters)` (the list, key `['transactions', filters]`),
-  `useTransaction(id)` (one record for the detail screen, key `['transactions', 'detail', id]`), and
-  `useUpdateTransaction` (a PATCH mutation) — so the `['transactions']` prefix invalidation from
-  `useCreateTransaction`/`useUpdateTransaction` refreshes both queries.
+  `useTransaction(id)` (one record for the detail screen, key `['transactions', 'detail', id]`),
+  `useUpdateTransaction` (a PATCH mutation), and `useDeleteTransaction` (a DELETE mutation that
+  removes the detail query from the cache before invalidating the list + summary, since refetching
+  a deleted detail would 404) — so the `['transactions']` prefix invalidation refreshes both
+  queries.
 
 ## Adding a new resource hook
 

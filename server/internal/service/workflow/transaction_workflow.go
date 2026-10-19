@@ -13,6 +13,7 @@ import (
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
 	"jww/internal/service/transaction_category"
+	"jww/internal/service/transaction_sub_transaction"
 	"jww/internal/service/unit_of_work"
 	"jww/internal/service/user"
 )
@@ -24,17 +25,13 @@ import (
 // owns the attachment side of a transaction's lifecycle: create-and-link,
 // attach-later, hydration of reads, and object cleanup on delete.
 type TransactionWorkflow struct {
-	currencyService    *currency.Service
-	categoryService    *transaction_category.Service
-	userService        *user.Service
-	transactionService *transaction.Service
-	attachmentService  *transaction_attachment.Service
-	uowManager         unit_of_work.Manager
-}
-
-type TransactionWithPreviewGrants struct {
-	Transaction   domain.Transaction
-	PreviewGrants map[uuid.UUID]string
+	currencyService       *currency.Service
+	categoryService       *transaction_category.Service
+	userService           *user.Service
+	transactionService    *transaction.Service
+	attachmentService     *transaction_attachment.Service
+	subTransactionService *transaction_sub_transaction.Service
+	uowManager            unit_of_work.Manager
 }
 
 func NewTransactionWorkflow(
@@ -43,21 +40,29 @@ func NewTransactionWorkflow(
 	userService *user.Service,
 	transactionService *transaction.Service,
 	attachmentService *transaction_attachment.Service,
+	subTransactionService *transaction_sub_transaction.Service,
 	uowManager unit_of_work.Manager,
 ) *TransactionWorkflow {
 	return &TransactionWorkflow{
-		currencyService:    currencyService,
-		categoryService:    categoryService,
-		userService:        userService,
-		transactionService: transactionService,
-		attachmentService:  attachmentService,
-		uowManager:         uowManager,
+		currencyService:       currencyService,
+		categoryService:       categoryService,
+		userService:           userService,
+		transactionService:    transactionService,
+		attachmentService:     attachmentService,
+		subTransactionService: subTransactionService,
+		uowManager:            uowManager,
 	}
 }
 
 // Create resolves references and, when attachmentIDs is non-empty, locks and
 // links those drafts in the same unit of work as the insert — so the
 // transaction and every link commit or roll back together, with no S3 work.
+//
+// When subTransactions is non-empty the transaction's amount is derived as
+// their sum and any passed amount is ignored (documented, not an error); each
+// item is inserted in the same unit of work as the transaction and its
+// attachment links. When subTransactions is empty the passed amount is used
+// unchanged.
 func (w *TransactionWorkflow) Create(
 	ctx domain.AppContext,
 	transactionType domain.TransactionType,
@@ -70,6 +75,7 @@ func (w *TransactionWorkflow) Create(
 	description string,
 	createdAt *time.Time,
 	attachmentIDs []uuid.UUID,
+	subTransactions []domain.NewSubTransaction,
 ) (*domain.Transaction, error) {
 	uow, err := w.uowManager.Create(ctx)
 	if err != nil {
@@ -89,6 +95,15 @@ func (w *TransactionWorkflow) Create(
 	if err != nil {
 		_ = uow.Restore(ctx)
 		return nil, err
+	}
+
+	// The sum of the line items wins over any client-supplied amount: the
+	// transaction total is derived whenever items exist.
+	if len(subTransactions) > 0 {
+		amount = 0
+		for _, item := range subTransactions {
+			amount += item.Amount
+		}
 	}
 
 	var attachments []domain.TransactionAttachment
@@ -119,6 +134,21 @@ func (w *TransactionWorkflow) Create(
 		created.Attachments = linkedAs(attachments, created.ID)
 	} else {
 		created.Attachments = []domain.TransactionAttachment{}
+	}
+
+	if len(subTransactions) > 0 {
+		items := make([]domain.TransactionSubTransaction, 0, len(subTransactions))
+		for _, item := range subTransactions {
+			createdItem, err := w.subTransactionService.Create(ctx, created.ID, item.Name, item.Label, item.Amount, uow)
+			if err != nil {
+				_ = uow.Restore(ctx)
+				return nil, err
+			}
+			items = append(items, *createdItem)
+		}
+		created.SubTransactions = items
+	} else {
+		created.SubTransactions = []domain.TransactionSubTransaction{}
 	}
 
 	if err := uow.Finish(ctx); err != nil {
@@ -161,7 +191,8 @@ func (w *TransactionWorkflow) Attach(ctx domain.AppContext, transactionID int64,
 	return uow.Finish(ctx)
 }
 
-// Get loads one transaction together with its attachment summaries.
+// Get loads one transaction together with its attachment summaries and its
+// line items.
 func (w *TransactionWorkflow) Get(ctx domain.AppContext, transactionID int64) (*domain.Transaction, error) {
 	uow, err := w.uowManager.Create(ctx)
 	if err != nil {
@@ -181,6 +212,15 @@ func (w *TransactionWorkflow) Get(ctx domain.AppContext, transactionID int64) (*
 	if t.Attachments == nil {
 		t.Attachments = []domain.TransactionAttachment{}
 	}
+	subTransactions, err := w.subTransactionService.ListByTransactionIDs(ctx, []int64{transactionID}, uow)
+	if err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	t.SubTransactions = subTransactions
+	if t.SubTransactions == nil {
+		t.SubTransactions = []domain.TransactionSubTransaction{}
+	}
 	if err := uow.Finish(ctx); err != nil {
 		return nil, err
 	}
@@ -190,7 +230,7 @@ func (w *TransactionWorkflow) Get(ctx domain.AppContext, transactionID int64) (*
 // GetWithPreviewGrants loads a transaction and issues short-lived inline
 // preview grants for each safely previewable attachment. List/create responses
 // deliberately do not mint capabilities.
-func (w *TransactionWorkflow) GetWithPreviewGrants(ctx domain.AppContext, transactionID int64) (*TransactionWithPreviewGrants, error) {
+func (w *TransactionWorkflow) GetWithPreviewGrants(ctx domain.AppContext, transactionID int64) (*domain.TransactionWithPreviewGrants, error) {
 	t, err := w.Get(ctx, transactionID)
 	if err != nil {
 		return nil, err
@@ -199,20 +239,36 @@ func (w *TransactionWorkflow) GetWithPreviewGrants(ctx domain.AppContext, transa
 	if err != nil {
 		return nil, err
 	}
-	return &TransactionWithPreviewGrants{Transaction: *t, PreviewGrants: grants}, nil
+	return &domain.TransactionWithPreviewGrants{Transaction: *t, PreviewGrants: grants}, nil
 }
 
 // Update applies a partial patch to an existing transaction. It loads the
 // current row, resolves any referenced currency/category/user, merges the
 // provided fields, re-validates the whole result (so a type change that no
 // longer agrees with the category is a 400), and writes it. The result carries
-// hydrated attachments and preview grants, matching the GET detail response.
-// An empty patch is a read-only no-op that returns the current state.
-func (w *TransactionWorkflow) Update(ctx domain.AppContext, transactionID int64, patch transaction.Patch) (*TransactionWithPreviewGrants, error) {
+// hydrated attachments, line items, and preview grants, matching the GET detail
+// response. An empty patch is a read-only no-op that returns the current state.
+//
+// When the transaction already has line items its amount is derived from them:
+// an explicit amount patch is rejected as a validation error rather than being
+// silently overwritten.
+func (w *TransactionWorkflow) Update(ctx domain.AppContext, transactionID int64, patch transaction.Patch) (*domain.TransactionWithPreviewGrants, error) {
 	current, err := w.transactionService.GetByID(ctx, transactionID)
 	if err != nil {
 		return nil, err
 	}
+
+	subTransactions, err := w.subTransactionService.ListByTransactionIDs(ctx, []int64{transactionID})
+	if err != nil {
+		return nil, err
+	}
+	if subTransactions == nil {
+		subTransactions = []domain.TransactionSubTransaction{}
+	}
+	if len(subTransactions) > 0 && patch.Amount != nil {
+		return nil, domain.NewValidationError("amount is derived from sub-transactions and cannot be set directly")
+	}
+	current.SubTransactions = subTransactions
 
 	if !patch.Empty() {
 		if err := w.applyPatch(ctx, current, patch); err != nil {
@@ -238,7 +294,7 @@ func (w *TransactionWorkflow) Update(ctx domain.AppContext, transactionID int64,
 	if err != nil {
 		return nil, err
 	}
-	return &TransactionWithPreviewGrants{Transaction: *current, PreviewGrants: grants}, nil
+	return &domain.TransactionWithPreviewGrants{Transaction: *current, PreviewGrants: grants}, nil
 }
 
 // applyPatch resolves every referenced resource and mutates t in place. A
@@ -285,6 +341,125 @@ func (w *TransactionWorkflow) applyPatch(ctx domain.AppContext, t *domain.Transa
 		t.CreatedAt = patch.CreatedAt.UTC()
 	}
 	return nil
+}
+
+// CreateSubTransaction adds one line item to an existing transaction and
+// recomputes the parent amount as the sum of its items, in one unit of work.
+// A missing parent surfaces as the transaction service's not-found error.
+func (w *TransactionWorkflow) CreateSubTransaction(ctx domain.AppContext, transactionID int64, item domain.NewSubTransaction) (*domain.Transaction, error) {
+	uow, err := w.uowManager.Create(ctx)
+	if err != nil {
+		return nil, err
+	}
+	transaction, err := w.transactionService.GetByID(ctx, transactionID, uow)
+	if err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	if _, err := w.subTransactionService.Create(ctx, transactionID, item.Name, item.Label, item.Amount, uow); err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	return w.recomputeAmount(ctx, transaction, uow)
+}
+
+// UpdateSubTransaction patches one line item and recomputes the parent amount in
+// one unit of work. A missing parent, a missing item, or an item belonging to a
+// different transaction all surface as a not-found error.
+func (w *TransactionWorkflow) UpdateSubTransaction(ctx domain.AppContext, transactionID int64, subTransactionID uuid.UUID, patch domain.SubTransactionPatch) (*domain.Transaction, error) {
+	uow, err := w.uowManager.Create(ctx)
+	if err != nil {
+		return nil, err
+	}
+	transaction, err := w.transactionService.GetByID(ctx, transactionID, uow)
+	if err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	item, err := w.subTransactionService.GetByID(ctx, subTransactionID, uow)
+	if err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	if item.TransactionID != transactionID {
+		_ = uow.Restore(ctx)
+		return nil, domain.NewTransactionSubTransactionNotFoundError(subTransactionID)
+	}
+	if patch.Name != nil {
+		item.Name = *patch.Name
+	}
+	if patch.Label != nil {
+		item.Label = *patch.Label
+	}
+	if patch.Amount != nil {
+		item.Amount = *patch.Amount
+	}
+	if _, err := w.subTransactionService.Update(ctx, *item, uow); err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	return w.recomputeAmount(ctx, transaction, uow)
+}
+
+// DeleteSubTransaction removes one line item and recomputes the parent amount in
+// one unit of work. Deleting the last item leaves the parent amount unchanged
+// (the last computed value persists until it is edited directly). A missing
+// parent, a missing item, or a parent/child mismatch all surface as not-found.
+func (w *TransactionWorkflow) DeleteSubTransaction(ctx domain.AppContext, transactionID int64, subTransactionID uuid.UUID) (*domain.Transaction, error) {
+	uow, err := w.uowManager.Create(ctx)
+	if err != nil {
+		return nil, err
+	}
+	transaction, err := w.transactionService.GetByID(ctx, transactionID, uow)
+	if err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	item, err := w.subTransactionService.GetByID(ctx, subTransactionID, uow)
+	if err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	if item.TransactionID != transactionID {
+		_ = uow.Restore(ctx)
+		return nil, domain.NewTransactionSubTransactionNotFoundError(subTransactionID)
+	}
+	if err := w.subTransactionService.Delete(ctx, *item, uow); err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	return w.recomputeAmount(ctx, transaction, uow)
+}
+
+// recomputeAmount re-lists the parent's line items, sets the parent amount to
+// their sum when any remain (leaving it untouched when the list is now empty),
+// persists the parent, and returns it with hydrated items. It owns the supplied
+// unit of work: Restore on every error path, Finish once on success.
+func (w *TransactionWorkflow) recomputeAmount(ctx domain.AppContext, transaction *domain.Transaction, uow unit_of_work.UnitOfWork) (*domain.Transaction, error) {
+	items, err := w.subTransactionService.ListByTransactionIDs(ctx, []int64{transaction.ID}, uow)
+	if err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	if len(items) > 0 {
+		var sum domain.Money
+		for _, item := range items {
+			sum += item.Amount
+		}
+		transaction.Amount = sum
+	}
+	if _, err := w.transactionService.Update(ctx, *transaction, uow); err != nil {
+		_ = uow.Restore(ctx)
+		return nil, err
+	}
+	if items == nil {
+		items = []domain.TransactionSubTransaction{}
+	}
+	transaction.SubTransactions = items
+	if err := uow.Finish(ctx); err != nil {
+		return nil, err
+	}
+	return transaction, nil
 }
 
 // Delete asks the attachment service to delete every attachment in full before
@@ -350,8 +525,8 @@ func (w *TransactionWorkflow) List(ctx domain.AppContext, filter transaction.Fil
 	return transactions, nil
 }
 
-// hydrate batch-loads attachments for every returned transaction in one query
-// and groups them in memory
+// hydrate batch-loads attachments and line items for every returned transaction
+// in one query each and groups them in memory
 func (w *TransactionWorkflow) hydrate(ctx domain.AppContext, transactions []domain.Transaction) error {
 	ids := make([]int64, len(transactions))
 	for i := range transactions {
@@ -368,12 +543,26 @@ func (w *TransactionWorkflow) hydrate(ctx domain.AppContext, transactions []doma
 		}
 		byTransaction[*attachment.TransactionID] = append(byTransaction[*attachment.TransactionID], attachment)
 	}
+	subTransactions, err := w.subTransactionService.ListByTransactionIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	subsByTransaction := make(map[int64][]domain.TransactionSubTransaction, len(transactions))
+	for _, item := range subTransactions {
+		subsByTransaction[item.TransactionID] = append(subsByTransaction[item.TransactionID], item)
+	}
 	for i := range transactions {
 		group := byTransaction[transactions[i].ID]
 		if group == nil {
 			group = []domain.TransactionAttachment{}
 		}
 		transactions[i].Attachments = group
+
+		subGroup := subsByTransaction[transactions[i].ID]
+		if subGroup == nil {
+			subGroup = []domain.TransactionSubTransaction{}
+		}
+		transactions[i].SubTransactions = subGroup
 	}
 	return nil
 }

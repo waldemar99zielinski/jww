@@ -15,6 +15,8 @@ if a function needs a hook or touches `fetch`, it belongs in `hooks/` or `api/`,
 - `viewport.ts` / `designMode.ts` / `authToken.ts` / `pwa.ts` — single-flag/value accessors backing
   `useViewport`, `isDesignMode()`, the stored auth token, and online/standalone status +
   service-worker registration respectively.
+- `version.ts` — `APP_VERSION`, read from `package.json`. Logged once at boot and shown on the
+  Settings "About" row.
 - `installEnvironment.ts` — the install decision tree as pure functions (`detectPlatform`,
   `isInAppWebView`, `resolveInstallUiState`): maps a captured UA + browser snapshot to what the
   Settings install row should render, so every branch is unit-testable without a browser. The

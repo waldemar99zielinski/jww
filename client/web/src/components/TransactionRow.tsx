@@ -33,7 +33,7 @@ export function TransactionRow({ transaction, subtitle, to }: TransactionRowProp
       <span
         className={`shrink-0 whitespace-nowrap font-mono text-[13.5px] tabular-nums ${transaction.type === 'income' ? 'font-bold text-ink' : 'text-ink-soft'}`}
       >
-        {formatSignedAmount(Number(transaction.amount), transaction.type)}
+        {formatSignedAmount(transaction.amount / 100, transaction.type, transaction.currency_code)}
       </span>
     </>
   )

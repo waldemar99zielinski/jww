@@ -75,4 +75,29 @@ describe('AmountHero', () => {
     await user.tab()
     expect(input).toHaveValue('')
   })
+
+  it('renders the derived amount as read-only text with a note when readOnly is set', () => {
+    const onAmountChange = vi.fn()
+    render(
+      <AmountHero amount="12,48" currencyCode="EUR" onAmountChange={onAmountChange} readOnly note="= sum of 2 items" />,
+    )
+
+    expect(screen.getByText('12,48')).toBeInTheDocument()
+    expect(screen.getByText('= sum of 2 items')).toBeInTheDocument()
+    // Read-only means there is no input to type into at all.
+    expect(screen.queryByLabelText('Amount')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(onAmountChange).not.toHaveBeenCalled()
+  })
+
+  it('keeps the editable input when readOnly is not set', async () => {
+    const user = userEvent.setup()
+    const onAmountChange = vi.fn()
+    render(<AmountHero amount="" currencyCode="EUR" onAmountChange={onAmountChange} />)
+
+    const input = screen.getByLabelText('Amount')
+    await user.type(input, '5')
+
+    expect(onAmountChange).toHaveBeenCalledWith('5')
+  })
 })

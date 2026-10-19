@@ -145,22 +145,30 @@ func ParseMoney(s string) (Money, error) {
 // e.g. "12.34" or "-7.00".
 func (m Money) String() string { return formatFixedPoint(int64(m), 2) }
 
-// MarshalJSON emits the amount as a bare (unquoted) JSON number token, e.g.
-// 12.34, matching the numeric(12,2) column it round-trips through.
-func (m Money) MarshalJSON() ([]byte, error) { return []byte(m.String()), nil }
+// MarshalJSON emits the amount as a bare (unquoted) integer number of minor
+// units (cents), e.g. 1234. The HTTP contract is cents-only; decimal digits are
+// a display concern, never a wire representation.
+func (m Money) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.FormatInt(int64(m), 10)), nil
+}
 
-// UnmarshalJSON accepts either a bare JSON number or a quoted string.
+// UnmarshalJSON accepts a bare integer or a quoted integer, both in minor units
+// (cents). Decimal input is rejected so a client that accidentally sends major
+// units cannot be silently accepted as a different amount.
 func (m *Money) UnmarshalJSON(data []byte) error {
 	s := jsonString(data)
 	if s == "null" {
 		*m = 0
 		return nil
 	}
-	parsed, err := ParseMoney(s)
-	if err != nil {
-		return err
+	if strings.Contains(s, ".") {
+		return fmt.Errorf("money must be an integer number of cents, got %q", s)
 	}
-	*m = parsed
+	cents, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil {
+		return fmt.Errorf("money must be an integer number of cents: %w", err)
+	}
+	*m = Money(cents)
 	return nil
 }
 

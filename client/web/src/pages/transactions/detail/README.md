@@ -2,38 +2,41 @@
 
 The transaction **detail screen**, reached by clicking a row in `pages/transactions/` (route
 `/transactions/:id`). Standard container/view structure (see `pages/README.md`); it renders every
-field of one `TransactionDto` plus its attachments, and can switch in place into an edit form.
+field of one `TransactionDto` plus its line items and attachments, and can switch in place into an
+edit form. The read-only screen also offers a confirmed **Remove transaction** action.
 
 ## Files
 
 - `index.tsx` — container. Reads the `:id` route param, fetches the transaction via
   `useTransaction` and the users list via `useUsers`, and turns them into a ready-to-render view
   model: a hero (`title`/`amount`/`isIncome`), a flat `items` list of already-formatted
-  label/value pairs, and the raw `attachments`. An invalid id is treated as an error without
-  fetching. It also owns edit mode: the form state, the field handlers, and the
-  `useUpdateTransaction` PATCH (see "Edit mode" below).
+  label/value pairs, the read-only line items, and the raw `attachments`. An invalid id is treated
+  as an error without fetching. It also owns edit mode: the form state, the field handlers, and the
+  `useUpdateTransaction` PATCH (see "Edit mode" below), plus the confirmed transaction delete.
 - `types.ts` — `TransactionDetailViewProps` (+ `TransactionDetailItem`,
-  `TransactionDetailEditProps`); the `items` shape keeps both view variants rendering the exact
-  same fields — the container decides *what* is shown, the views only decide *how*. The
-  `TransactionDetailEditProps` block carries the edit form's values/handlers, again computed once
-  in the container.
+  `TransactionDetailSubTransactionItem`, `TransactionDetailEditProps`); the `items` shape keeps
+  both view variants rendering the exact same fields — the container decides *what* is shown, the
+  views only decide *how*. The `TransactionDetailEditProps` block carries the edit form's
+  values/handlers, again computed once in the container.
 - `TransactionDetail.desktop.tsx` / `TransactionDetail.mobile.tsx` — layout variants (centered
   card vs. full-height screen with a sticky header). Both compose the same page-local components
   below, and both swap the hero + `DetailList` for `TransactionEditForm` while editing.
 - `components/TransactionHero.tsx` — category icon + name + signed amount block.
 - `components/DetailList.tsx` — the label/value definition list.
-- `components/TransactionEditForm.tsx` — the edit form. One pure-display component (a `layout`
-  prop picks the desktop two-column vs. mobile single-column arrangement, the same split as the
-  Add screen) that renders the shared `AmountHero`/`DateTimeFields`/`MoreOptionsPanel`/
-  `toCategoryOptions` building blocks plus Save/Reset.
+- `components/SubTransactionSummary.tsx` — read-only line-item rows (name, optional label,
+  formatted amount) shown under the detail fields.
+- `components/DeleteTransactionAction.tsx` — the confirmation sheet for removing the whole
+  transaction.
+- `components/TransactionEditForm.tsx` — the edit form. One pure-display component that wraps the
+  shared `src/components/TransactionFormFields.tsx` (the same field set and desktop two-column vs.
+  mobile stacked arrangement as Add) and supplies the page-specific inline `SubTransactionList`
+  and Save/Reset actions as slots.
 - `components/AttachmentList.tsx` — attachment rows. The row itself opens the lightbox (for any
   displayable type); its trailing `⋮` button opens the actions drawer.
 - `components/AttachmentActions.tsx` — the actions drawer (`BottomSheet`): preview, download, and a
   two-step-confirm delete.
-- `components/AttachmentPreview.tsx` — the full-screen attachment lightbox (one renderer per type:
-  image, PDF, video, audio, text; closes on X / Escape / backdrop tap, or a downward swipe).
-- `formatBytes.ts` / `previewKind.ts` — page-local helpers: human byte sizes, and mapping a media
-  type to a preview renderer (`PreviewKind`) or `null` when the browser can't show it.
+- `src/lib/formatBytes.ts` / `src/lib/previewKind.ts` — shared helpers: human byte sizes, and
+  mapping a media type to a preview renderer (`PreviewKind`) or `null` when the browser can't show it.
 - `components/SwipeToClose.tsx` — mobile-only wrapper: drag the screen to the right to dismiss it,
   with a shared animated `close` for the header button (`TransactionDetail.mobile.tsx`).
 
@@ -50,7 +53,29 @@ field of one `TransactionDto` plus its attachments, and can switch in place into
   `decimalStringToAmountDisplay`, which accepts both a string and a number — a numeric input there
   used to throw and make the Edit button appear dead against the real backend.
 
+## Line items and removing the transaction
+
+- **Read-only items** — whenever `sub_transactions` has rows, the detail screen lists them under
+  **Items** with each name, optional label, and amount formatted in the transaction's currency.
+  The list is display-only here; adding, editing, and removing rows remains in edit mode's
+  `SubTransactionList`.
+- **Remove transaction** — the button at the bottom opens `DeleteTransactionAction`, a
+  `BottomSheet` confirmation whose copy states that the transaction, all of its items, and all of
+  its attachments will be removed. Confirming calls `deleteTransaction()` →
+  `useDeleteTransaction` (`DELETE /v1/transactions/{id}`). The server deletes every linked
+  attachment (metadata and stored object) and the database's `ON DELETE CASCADE` removes the line
+  items. On success the detail query is removed from the cache, the list/summary queries are
+  invalidated, and the screen navigates to `/transactions` with `replace` so Back cannot reopen the
+  deleted record. A failed delete keeps the sheet open with an inline error.
+
 ## Attachments (preview grants + download)
+
+- **Add attachment** — the Attachments header has an `Add attachment` action that opens the shared
+  `src/components/TransactionAttachmentPicker.tsx`. Each picked file is uploaded directly onto the
+  existing transaction via `uploadTransactionAttachment()` →
+  `useUploadTransactionAttachment` (`POST /v1/transactions/{id}/attachments`); the detail query is
+  invalidated so the new row appears after the server responds. The button shows an uploading state
+  and failures surface inline. The section renders even when there are no attachments yet.
 
 `GET /v1/transactions/{transactionID}` is a **different shape** from list/create: it returns a
 `TransactionDetailsDto` whose attachments each carry a short-lived `preview_grant`
@@ -58,14 +83,15 @@ field of one `TransactionDto` plus its attachments, and can switch in place into
 (raster images and PDF; `null` for everything else). List/create responses keep the lightweight
 `TransactionAttachmentDto` and never mint grants.
 
-- **Preview** — clicking an attachment opens a full-screen lightbox (`AttachmentPreview`). Images
+- **Preview** — clicking an attachment opens the shared full-screen lightbox
+  (`src/components/AttachmentPreview.tsx`, also used by the Add page's attachment bar). Images
   and PDFs render straight from the server's grant URL (exchanged via
   `GET /api/v1/attachment-content?grant=…`; `attachmentPreviewUrl()` in `api/attachments.ts` builds
   it, `apiUrl()` in `api/client.ts` supplies the origin/prefix). Because that route needs no auth
   header, the URL is safe to drop straight into an `<img src>` or an `<iframe>`. Video, audio and
   text-like types have **no grant**, so the lightbox fetches their bytes through the protected
   download route and renders a blob URL (or, for text, the decoded string in a `<pre>`); anything
-  else shows a "download it instead" message. `previewKind.ts` owns that media-type→renderer map.
+  else shows a "download it instead" message. `src/lib/previewKind.ts` owns that media-type→renderer map.
   The attachment *metadata* arrives with the transaction, but an image's *bytes* are fetched by the
   browser afterwards, so the row's thumbnail slot renders a spinner until the `<img>` fires `onLoad`.
   The lightbox keeps its spinner until the content is actually on screen — i.e. until the
@@ -141,19 +167,23 @@ instantly; only our own controls and the in-app swipe get the exit transition.
 ## Testing
 
 - Container: MSW-mock the by-id endpoint (and a 404 for the not-found case) and assert the
-  fetched transaction's fields and attachments render — see the "page containers" section of
-  `TESTING.md`. Also cover the attachment actions: opening the drawer (preview/download/delete) and
-  that a confirmed delete hits the transaction-scoped route and drops the row after the refetch.
+  fetched transaction's fields, read-only line items, and attachments render — see the "page
+  containers" section of `TESTING.md`. Also cover the attachment actions: opening the drawer
+  (preview/download/delete) and that a confirmed delete hits the transaction-scoped route and drops
+  the row after the refetch. Cover the whole-transaction remove flow too: the confirmation copy,
+  the `DELETE` call, the navigation back to the list, and the inline error when it fails.
 - `TransactionDetail.test.tsx` renders **both** view variants with identical props and asserts
   the same fields appear in each, per the desktop/mobile-divergence rule in `TESTING.md`. It also
-  covers edit mode: the header Edit button calls `onStartEdit`, and while `isEditing` each field
-  renders as a control with Save/Reset (and no read-only list).
+  covers the read-only Items list and Remove transaction button, plus edit mode: the header Edit
+  button calls `onStartEdit`, and while `isEditing` each field renders as a control with
+  Save/Reset (and no read-only list).
 - `index.test.tsx` covers the edit round trip: clicking Edit, changing a field, and Save issuing a
   `PATCH` with the converted payload (display commas → whole minor units); and Reset restoring the
   saved values.
-- `components/AttachmentPreview.test.tsx` covers one renderer per media type (image via grant, PDF
-  iframe, text/video/audio via the download route), the unsupported fallback, the loader-until-loaded
-  state, Escape/close, and the swipe-down dismiss (past threshold closes, short/horizontal ones don't).
+- `src/components/AttachmentPreview.test.tsx` covers one renderer per media type (image via inline
+  URL, PDF iframe, text/video/audio via the blob loader), the unsupported fallback, the
+  loader-until-loaded state, Escape/close, and the swipe-down dismiss (past threshold closes,
+  short/horizontal ones don't).
 - `components/AttachmentActions.test.tsx` covers the drawer rows, the delete confirm step, and the
   busy/error states.
 - `components/SwipeToClose.test.tsx` drives the gesture with `fireEvent.touch*` (rightward past

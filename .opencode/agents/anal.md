@@ -112,33 +112,37 @@ Write exactly one report to `.anal/<feature-slug>/index.html` (short, stable, lo
 - legible on a laptop and usable on a narrow screen (responsive layout or safe horizontal scrolling); accessible contrast, visible focus states, useful alt/ARIA text, print-friendly CSS;
 - escape code and untrusted text; create a fresh information design per feature rather than reusing an earlier report's palette or section order.
 
-**Keep it as short as possible while remaining implementation-ready.** Prefer one table or diagram per topic over prose. Do not repeat the same information in two sections. Cut anything a coder could infer directly from the code.
+**Keep it as short as possible while remaining implementation-ready.** This is a hard requirement, not a preference: the document must be easy to understand at a glance. Include only content that is relevant and necessary to the resolved goal — no irrelevant, speculative, or "nice to have" material. Prefer one correct visual or table per topic over prose. Never repeat the same information in two sections. Cut anything a coder could infer directly from the code.
 
 # Report content
 
-Include the sections that apply to the resolved scope and omit the rest rather than padding. Default order (adapt freely):
+The first three sections are the spine and always come first, in this order: **goal → flow/use cases → components**. Everything after them is supporting detail — include only the sections the resolved scope needs and omit the rest rather than padding.
 
-1. **Scope** — resolved scope, feature boundary, owning side, and non-goals, as a compact key/value block or table.
-2. **TL;DR** — what the feature does, who triggers it, the recommended design, and the most important consequences.
-3. **Current state** — how it works now and where the extension points and constraints are, with citations.
-4. **Proposed behavior** — happy path and failure path, plus the API/HTTP surface or UI/route surface.
+1. **Goal** — the one-line goal first, then resolved scope, feature boundary, owning side, and non-goals, as a compact key/value block or table. Every later section must serve this goal; cut anything that does not.
+2. **Flow & use cases** — one visual that tells the whole end-to-end story *before* any component detail. This is the use-case section; each path or transition through it is a use case.
+   - **Server:** a component/flow graph of the proposed solution — actors/triggers → entry points → domain/workflow steps → data and external systems — with the happy path solid and failure/async/background branches dashed.
+   - **Client/web:** a screen-flow graph drawn from the **actual screens/pages/routes in this repo** (use the real component/route names from inspected code, never invented ones), showing how the user moves between them and where each state (loading/empty/error/…) is reached. Each screen-to-screen transition is a use case.
+   - **Cross-cutting:** show both layers and mark where the client↔server contract sits.
+3. **Software components** — first the graph, then the design:
+   - **Communication graph** — how the components talk (calls, navigation, events, interfaces, dependency direction); solid for runtime, dashed for interfaces/async; for cross-cutting show the client/backend boundary.
+   - **Component design** — one row/block per **REUSE**, **MODIFY**, and **NEW** component: responsibility, where it will be placed (repository-relative path), and realistic signatures. Never present a proposed component as if it exists.
+4. **Proposed behavior** — happy and failure paths in compact form, plus the API/HTTP surface or UI/route surface not already covered by the flow.
 5. **Change map** — before/after: new, modified, reused, removed, shown visually.
-6. **Architecture / component visual** — boundaries, dependency direction, ports/adapters or container/view, integrations.
-7. **Flow visual** — sequence, swimlane, or state machine for the end-to-end path and failure branches.
-8. **Data and contracts** — domain/model changes, migrations, schemas, validation, compatibility, transactions, idempotency, cache keys/invalidation, mock parity.
-9. **State and edge-case coverage** — loading, empty, partial, stale, offline, validation, error, success, denied (client) or edge and failure cases (server), as a table.
-10. **Responsive behavior** *(client)* — breakpoints, layout transforms, priority changes, and what stays behaviorally identical.
-11. **Interaction and accessibility** *(client)* — keyboard/pointer, focus management, validation timing, feedback, and reduced motion for the *feature*; landmarks, names, contrast, and testable criteria.
-12. **Security and privacy** — authorization, trust boundaries, secrets, sensitive data, abuse.
-13. **File-by-file plan** — repository-relative paths, responsibility, realistic signatures, dependency order, as a table.
-14. **Configuration and dependencies** — defaults, ownership, validation, lifecycle, and alternatives for any new dependency.
-15. **Testing plan** — unit/integration/E2E placement, concrete cases, fakes, and repository-consistent commands, as a table.
-16. **Operations and failure modes** — logging, metrics/alerts, retries, timeouts, shutdown, recovery, deployment.
-17. **Alternatives and tradeoffs** — one recommendation against credible alternatives.
-18. **Risks, assumptions, and open decisions** — impact, mitigation, and owner or decision needed.
-19. **Rollout and rollback** — ordered, testable, safe.
-20. **Acceptance traceability** — each clarified outcome mapped to components/screens and tests.
-21. **Sources** — local path/line evidence and external references; plus targeted checks run and not run.
+6. **Current state** — how it works now and where the extension points and constraints are, with citations. Keep it to what the flow and components above depend on.
+7. **Data and contracts** — domain/model changes, migrations, schemas, validation, compatibility, transactions, idempotency, cache keys/invalidation, mock parity.
+8. **State and edge-case coverage** — loading, empty, partial, stale, offline, validation, error, success, denied (client) or edge and failure cases (server), as a table.
+9. **Responsive behavior** *(client)* — breakpoints, layout transforms, priority changes, and what stays behaviorally identical.
+10. **Interaction and accessibility** *(client)* — keyboard/pointer, focus management, validation timing, feedback, and reduced motion for the *feature*; landmarks, names, contrast, and testable criteria.
+11. **Security and privacy** — authorization, trust boundaries, secrets, sensitive data, abuse.
+12. **File-by-file plan** — repository-relative paths, responsibility, dependency/build order, as a table. Keep it to ordering and wiring; do not restate the component design.
+13. **Configuration and dependencies** — defaults, ownership, validation, lifecycle, and alternatives for any new dependency.
+14. **Testing plan** — unit/integration/E2E placement, concrete cases, fakes, and repository-consistent commands, as a table.
+15. **Operations and failure modes** — logging, metrics/alerts, retries, timeouts, shutdown, recovery, deployment.
+16. **Alternatives and tradeoffs** — one recommendation against credible alternatives.
+17. **Risks, assumptions, and open decisions** — impact, mitigation, and owner or decision needed.
+18. **Rollout and rollback** — ordered, testable, safe.
+19. **Acceptance traceability** — each clarified outcome mapped to use cases, screens/components, and tests.
+20. **Sources** — local path/line evidence and external references; plus targeted checks run and not run.
 
 # Visual semantics
 
@@ -150,9 +154,12 @@ Consistent legend: green/`NEW` additions; amber/`MODIFY` changes; neutral/`REUSE
 - no animation or motion of any kind;
 - path is `.anal/<feature-slug>/index.html` and nothing outside `.anal/` was modified;
 - the resolved scope is stated explicitly and drives the content; every section is relevant to that scope;
+- the document leads with **goal → flow/use cases → components**, in that order, before any supporting detail;
+- the flow/use-case visual uses the **actual screens/routes/components** on the client and the actual components on the server — no invented ones;
+- the software-components section has both a **communication graph** and a **component design** (responsibility + placement) marked NEW/MODIFY/REUSE;
 - prose is minimal and free of boilerplate; the body is predominantly tables, diagrams, matrices, and annotated snippets;
 - every decisive claim is cited or explicitly labeled proposal/assumption;
-- the required visuals are present: change map, architecture/component visual, flow visual, plus scope-appropriate mockups/state coverage, file plan, testing plan, risks, and rollout;
+- the required visuals are present: goal, flow/use-case visual, component communication graph, component design, change map, plus scope-appropriate state coverage, file plan, testing plan, risks, and rollout;
 - the recommendation satisfies every clarified acceptance outcome;
 - the report is as short as possible without losing implementation-readiness;
 - state which targeted checks ran and which did not.

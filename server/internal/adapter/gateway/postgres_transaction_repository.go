@@ -156,10 +156,21 @@ func (r *PostgresTransactionRepository) List(ctx domain.AppContext, filter *tran
 		}
 	}
 
-	// The default timeline is newest-first by id. The id is a BIGSERIAL
-	// identity, so a descending id is insertion order (most recently created
-	// row first) regardless of any configured created_at value.
-	sql, args, err := builder.OrderBy("t.id DESC").ToSql()
+	// The list is ordered by transaction date; a descending order is the
+	// default. The id tie-breaker keeps results deterministic for transactions
+	// sharing the same date.
+	sort := transaction.Sort{}
+	if filter != nil {
+		sort = filter.Sort
+	}
+	sort = sort.Normalize()
+	direction := "DESC"
+	if sort.Order == transaction.SortOrderAsc {
+		direction = "ASC"
+	}
+	builder = builder.OrderBy("t.created_at "+direction, "t.id "+direction)
+
+	sql, args, err := builder.ToSql()
 	if err != nil {
 		return nil, err
 	}

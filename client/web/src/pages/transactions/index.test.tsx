@@ -27,6 +27,25 @@ describe('TransactionsPage', () => {
     expect(await screen.findByText('October salary')).toBeInTheDocument()
   })
 
+  it('requests the default date-descending sort', async () => {
+    let sortKey: string | null = null
+    let sortOrder: string | null = null
+    server.use(
+      http.get('*/api/v1/transactions', ({ request }) => {
+        const url = new URL(request.url)
+        sortKey = url.searchParams.get('sort_key')
+        sortOrder = url.searchParams.get('sort_order')
+        return HttpResponse.json({ data: fixtureTransactions })
+      }),
+    )
+
+    renderPage()
+
+    await screen.findByText('Weekly shop')
+    expect(sortKey).toBe('date')
+    expect(sortOrder).toBe('desc')
+  })
+
   it('narrows the list to one type after applying the Type filter', async () => {
     const user = userEvent.setup()
     renderPage()

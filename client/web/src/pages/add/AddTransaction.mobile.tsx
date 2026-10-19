@@ -1,64 +1,29 @@
 import { IconClose, IconPaperclip } from '@/components/icons'
-import { Button } from '@/components/ui/Button'
+import { TransactionAttachmentPicker } from '@/components/TransactionAttachmentPicker'
 import { IconButton } from '@/components/ui/IconButton'
-import { SearchableSelect } from '@/components/ui/SearchableSelect'
-import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { TextInput } from '@/components/ui/TextInput'
-import { AmountHero } from '@/components/AmountHero'
-import { toCategoryOptions } from '@/components/categoryOptions'
-import { DateTimeFields } from '@/components/DateTimeFields'
-import { MoreOptionsPanel } from '@/components/MoreOptionsPanel'
-import { QuickFieldsRow } from './components/QuickFieldsRow'
-import { TransactionAttachmentBanner } from './components/TransactionAttachmentBanner'
-import { TransactionAttachmentPicker } from './components/TransactionAttachmentPicker'
+import { AddTransactionForm } from './components/AddTransactionForm'
+import { AttachmentBar } from './components/AttachmentBar'
 import type { AddTransactionViewProps } from './types'
 
-const typeOptions = [
-  { label: 'expense', value: 'expense' },
-  { label: 'income', value: 'income' },
-] as const
-
 export default function AddTransactionMobile({
-  type,
-  onSelectType,
-  amount,
-  onAmountChange,
-  currencyCode,
-  currencies,
-  onCurrencyChange,
-  hasCurrency,
-  categories,
-  categoryId,
-  onSelectCategory,
-  name,
-  onNameChange,
-  description,
-  onDescriptionChange,
-  date,
-  time,
-  onDateChange,
-  onTimeChange,
-  onUseToday,
-  dateLabel,
-  dateOpen,
-  onToggleDate,
   attachments,
+  extractionStatus,
+  extractionSummary,
+  canScanAttachments,
+  canUndoExtraction,
   attachmentPickerOpen,
   onOpenAttachment,
   onCloseAttachment,
   onPickAttachment,
   onRemoveAttachment,
-  users,
-  userId,
-  onUserChange,
-  showUserPicker,
-  moreOpen,
-  onToggleMore,
-  canSave,
+  onPreviewAttachment,
+  onScanAttachments,
+  onCancelExtraction,
+  onUndoExtraction,
+  onReviewSubTransactions,
   saving,
-  saveError,
-  onSave,
   onClose,
+  ...formProps
 }: AddTransactionViewProps) {
   return (
     <div className="flex flex-col gap-5 px-4 pb-4 pt-6">
@@ -75,96 +40,29 @@ export default function AddTransactionMobile({
         </div>
       </div>
 
-      <SegmentedControl value={type} options={typeOptions} onChange={onSelectType} />
-
-      <AmountHero
-        amount={amount}
-        currencyCode={currencyCode}
-        currencies={currencies}
-        onCurrencyChange={onCurrencyChange}
-        onAmountChange={onAmountChange}
-        fullWidth
+      <AttachmentBar
+        attachments={attachments}
+        status={extractionStatus}
+        summary={extractionSummary}
+        canScan={canScanAttachments}
+        canUndo={canUndoExtraction}
+        disabled={saving}
+        onRemove={onRemoveAttachment}
+        onPreview={onPreviewAttachment}
+        onScan={onScanAttachments}
+        onCancel={onCancelExtraction}
+        onUndo={onUndoExtraction}
+        onReviewItems={onReviewSubTransactions}
       />
 
-      {attachments.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {attachments.map((a) => (
-            <TransactionAttachmentBanner key={a.id} attachment={a} onRemove={() => onRemoveAttachment(a.id)} />
-          ))}
-        </div>
-      )}
+      <AddTransactionForm layout="mobile" {...formProps} extractionSummary={extractionSummary} saving={saving} />
 
-      {!hasCurrency && (
-        <p className="m-0 text-center text-[11.5px] text-muted">
-          No currency configured yet — add one in Settings before saving.
-        </p>
-      )}
-
-      <TextInput
-        type="text"
-        value={name}
-        onChange={(e) => onNameChange(e.target.value)}
-        placeholder="Name (e.g. Lidl groceries)"
-        aria-label="Transaction name"
-        className="bg-surface sm:text-[13px]"
+      <TransactionAttachmentPicker
+        open={attachmentPickerOpen}
+        onClose={onCloseAttachment}
+        onFile={onPickAttachment}
+        description="Take a photo or choose one or more files. You can scan the uploaded image into the form."
       />
-
-      <div className="flex flex-col gap-2">
-        <p className="m-0 text-xs font-semibold uppercase tracking-wide text-muted">Category</p>
-        <SearchableSelect
-          value={categoryId ?? ''}
-          onChange={onSelectCategory}
-          options={toCategoryOptions(categories)}
-          placeholder="Select category"
-          searchPlaceholder="Search categories"
-          emptyMessage="No categories found"
-          inline
-        />
-      </div>
-
-      <TextInput
-        type="text"
-        value={description}
-        onChange={(e) => onDescriptionChange(e.target.value)}
-        placeholder="Description (optional)"
-        aria-label="Transaction description"
-        className="bg-surface sm:text-[13px]"
-      />
-
-      <QuickFieldsRow
-        dateLabel={dateLabel}
-        dateOpen={dateOpen}
-        onToggleDate={onToggleDate}
-        hasAttachment={attachments.length > 0}
-        onOpenAttachment={onOpenAttachment}
-      />
-
-      {dateOpen && (
-        <DateTimeFields date={date} time={time} onDateChange={onDateChange} onTimeChange={onTimeChange} onUseToday={onUseToday} />
-      )}
-
-      <MoreOptionsPanel
-        open={moreOpen}
-        onToggle={onToggleMore}
-        users={users}
-        userId={userId}
-        onUserChange={onUserChange}
-        showUserPicker={showUserPicker}
-      />
-
-      <div className="sticky bottom-[calc(72px+env(safe-area-inset-bottom))] z-10 -mx-4 mt-1 bg-paper px-4 pb-3 pt-3">
-        <Button
-          disabled={!canSave || saving}
-          onClick={onSave}
-          variant="primary"
-          className="w-full rounded-2xl bg-accent py-3.5 text-[14.5px] font-bold text-on-accent shadow-[var(--shadow-sm)] disabled:opacity-40"
-        >
-          {saving ? 'Saving…' : 'Save transaction'}
-        </Button>
-        {saveError && <p className="m-0 mt-2 text-center text-[11.5px] text-critical">Couldn't save — try again.</p>}
-      </div>
-
-      <TransactionAttachmentPicker open={attachmentPickerOpen} onClose={onCloseAttachment} onFile={onPickAttachment} />
     </div>
   )
 }

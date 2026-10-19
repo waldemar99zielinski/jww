@@ -1,8 +1,9 @@
 # components/ui/
 
 The design-system primitive layer: `Button`, `IconButton`, `TextInput`, `SelectInput`,
-`InlineSelect`, `FieldLabel`, `DateInput`, `SearchableSelect`, `SegmentedControl`, `Switch`,
-`BottomSheet`, `Loader`, plus `classes.ts` (the `cx()` class-join helper).
+`InlineSelect`, `SignedAmountInput`, `FieldLabel`, `DateInput`, `SearchableSelect`,
+`SegmentedControl`, `Switch`, `BottomSheet`, `Modal`, `Loader`, plus `classes.ts` (the `cx()`
+class-join helper).
 
 Every form control and button in the app is expected to route through this layer — it's the
 single place styling, accessibility (`role`/`aria-*`), and interaction behavior for a given
@@ -42,8 +43,8 @@ reusable.
 This is the most reused layer in the app, so it carries the highest bar: every primitive gets at
 least one RTL test exercising its documented accessibility contract (e.g. `Switch`'s
 `role="switch" aria-checked`, `Loader`'s `role="status"`, `BottomSheet`'s `aria-hidden`/`inert`
-toggle when closed) plus its core interaction via `user-event` (click/type/keyboard), not just a
-render snapshot. A bug introduced here silently breaks every page composing it, so these tests are
+toggle when closed, `Modal`'s `role="dialog" aria-modal` + Escape/close) plus its core interaction
+via `user-event` (click/type/keyboard), not just a render snapshot. A bug introduced here silently breaks every page composing it, so these tests are
 worth writing before the page-level tests that depend on them.
 
 ## Don't

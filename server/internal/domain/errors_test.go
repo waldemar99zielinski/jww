@@ -24,6 +24,7 @@ func TestNotFoundErrors_KindIsNotFoundAndErrorsAsWorks(t *testing.T) {
 		{"CurrencyExchangeRateNotFoundError", NewCurrencyExchangeRateNotFoundError("USD", "EUR")},
 		{"TransactionNotFoundError", NewTransactionNotFoundError(42)},
 		{"TransactionAttachmentNotFoundError", NewTransactionAttachmentNotFoundError(uuid.New())},
+		{"TransactionSubTransactionNotFoundError", NewTransactionSubTransactionNotFoundError(uuid.New())},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -33,6 +34,24 @@ func TestNotFoundErrors_KindIsNotFoundAndErrorsAsWorks(t *testing.T) {
 			assert.NotEmpty(t, domainErr.Error())
 		})
 	}
+}
+
+// TestTransactionSubTransactionNotFoundError_CarriesIdentity mirrors the
+// TransactionAttachmentNotFoundError precedent: the error carries only the
+// sub-transaction identity (no parent transaction id), so errors.As can pull
+// the offending id back out and the message names it.
+func TestTransactionSubTransactionNotFoundError_CarriesIdentity(t *testing.T) {
+	id := uuid.New()
+	err := NewTransactionSubTransactionNotFoundError(id)
+
+	var domainErr DomainError
+	require.True(t, errors.As(error(err), &domainErr))
+	assert.Equal(t, ErrorKindNotFound, domainErr.Kind())
+
+	var notFound *TransactionSubTransactionNotFoundError
+	require.True(t, errors.As(error(err), &notFound))
+	assert.Equal(t, id, notFound.SubTransactionID)
+	assert.ErrorContains(t, err, id.String())
 }
 
 func TestAuthenticationError_KindIsUnauthorized(t *testing.T) {
@@ -54,6 +73,11 @@ func TestAttachmentErrors_KindMapping(t *testing.T) {
 		{"validation", NewValidationError("bad input"), ErrorKindValidation},
 		{"storage unavailable", NewObjectStorageUnavailableError(errors.New("dial tcp")), ErrorKindUnavailable},
 		{"integrity", NewAttachmentIntegrityError(uuid.New(), errors.New("no such key")), ErrorKindInternal},
+		// A non-image attachment is a validation failure (400), checked before
+		// any grant is issued.
+		{"unsupported media type", NewUnsupportedAttachmentMediaTypeError("application/pdf"), ErrorKindValidation},
+		// Provider refusal and provider outage share one kind (503).
+		{"extraction failed", NewAttachmentExtractionFailedError(errors.New("provider 500")), ErrorKindUnavailable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,4 +105,18 @@ func TestAuthenticationError_DoesNotEnumerate(t *testing.T) {
 	first := NewAuthenticationError()
 	second := NewAuthenticationError()
 	assert.Equal(t, first.Error(), second.Error())
+}
+
+// TestExtractionFailedError_WrapsCause keeps the same posture as the storage
+// error: the client-facing message stays generic (never the provider's raw
+// response), while the underlying cause stays inspectable for boundary logging.
+func TestExtractionFailedError_WrapsCause(t *testing.T) {
+	cause := errors.New("openai: unexpected status 429 body={...raw provider payload...}")
+	err := NewAttachmentExtractionFailedError(cause)
+
+	var domainErr DomainError
+	require.True(t, errors.As(error(err), &domainErr))
+	assert.Equal(t, ErrorKindUnavailable, domainErr.Kind())
+	assert.NotContains(t, err.Error(), "raw provider payload")
+	assert.ErrorContains(t, errors.Unwrap(err), "429")
 }

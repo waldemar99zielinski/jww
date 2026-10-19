@@ -21,15 +21,15 @@ describe('HomePage', () => {
     // Summary totals come from the mocked /summary response (2500 income, 42.5 expense). The
     // signed amounts can legitimately appear twice (HeroBalanceCard's total + a matching
     // transaction row), so assert presence rather than a single unique match.
-    expect(await findByText(normalizeText(formatAmount(2457.5)))).toBeInTheDocument()
-    expect((await findAllByText(normalizeText(formatSignedAmount(2500, 'income')))).length).toBeGreaterThan(0)
-    expect((await findAllByText(normalizeText(formatSignedAmount(42.5, 'expense')))).length).toBeGreaterThan(0)
+    expect(await findByText(normalizeText(formatAmount(2457.5, 'EUR')))).toBeInTheDocument()
+    expect((await findAllByText(normalizeText(formatSignedAmount(2500, 'income', 'EUR')))).length).toBeGreaterThan(0)
+    expect((await findAllByText(normalizeText(formatSignedAmount(42.5, 'expense', 'EUR')))).length).toBeGreaterThan(0)
 
     // Category breakdown is derived from the mocked /transactions response's single expense.
     // "Groceries" legitimately appears twice (breakdown item + the matching transaction row's
     // subtitle), so assert presence via findAllByText rather than a single unique match.
     expect((await findAllByText('Groceries')).length).toBeGreaterThan(0)
-    expect(await findByText(normalizeText(formatAmount(42.5)))).toBeInTheDocument()
+    expect(await findByText(normalizeText(formatAmount(42.5, 'EUR')))).toBeInTheDocument()
 
     // Recent transactions list shows both mocked transactions.
     expect(await findByText('Weekly shop')).toBeInTheDocument()
@@ -75,6 +75,6 @@ describe('HomePage', () => {
 
     expect(await findByText('No expenses yet this month.')).toBeInTheDocument()
     expect(await findByText('No transactions yet.')).toBeInTheDocument()
-    expect(await findByText(normalizeText(formatAmount(0)))).toBeInTheDocument()
+    expect(await findByText(normalizeText(formatAmount(0, 'EUR')))).toBeInTheDocument()
   })
 })

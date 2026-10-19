@@ -1,4 +1,6 @@
-import type { CurrencyDto, TransactionCategoryDto, TransactionType, UserDto } from '@/api/types'
+import type { CurrencyDto, SubTransactionDto, TransactionCategoryDto, TransactionType, UserDto } from '@/api/types'
+import type { AttachmentPreviewItem } from '@/components/AttachmentPreview'
+import type { SubTransactionListInput } from '@/components/SubTransactionList'
 
 /** One label/value pair in the detail screen's field list, already formatted for display. */
 export interface TransactionDetailItem {
@@ -6,18 +8,19 @@ export interface TransactionDetailItem {
   value: string
 }
 
+/** One read-only line item, with its amount already formatted for the transaction's currency. */
+export interface TransactionDetailSubTransactionItem {
+  id: string
+  name: string
+  label: string
+  amount: string
+}
+
 /**
  * A ready-to-render attachment row. The container resolves the server's raw attachment (including
  * the short-lived `preview_grant`) into a usable `previewUrl`, so the views stay free of URL logic.
  */
-export interface TransactionAttachmentItem {
-  id: string
-  filename: string
-  mediaType: string
-  byteSize: number
-  /** Inline preview URL for previewable media (image/PDF), or null for download-only files. */
-  previewUrl: string | null
-}
+export type TransactionAttachmentItem = AttachmentPreviewItem
 
 /**
  * The editable form that replaces the read-only fields while the detail screen is in edit mode.
@@ -27,6 +30,10 @@ export interface TransactionAttachmentItem {
 export interface TransactionDetailEditProps {
   type: TransactionType
   amount: string
+  /** True while the loaded transaction has line items, so the Amount shows the derived Σ read-only. */
+  amountReadOnly?: boolean
+  /** Hint shown under a derived Amount, e.g. "= sum of 2 items". */
+  amountNote?: string
   currencyCode: string | undefined
   currencies: CurrencyDto[]
   hasCurrency: boolean
@@ -56,6 +63,17 @@ export interface TransactionDetailEditProps {
   onUseToday: () => void
   onUserChange: (id: string) => void
   onToggleMore: () => void
+
+  /** The loaded transaction's line items. The edit path saves each row immediately (create/patch/delete). */
+  subTransactions?: SubTransactionDto[]
+  /** A line-item mutation is in flight — the row list locks and the affected row acknowledges. */
+  subTransactionsBusy?: boolean
+  /** Inline message when a line-item mutation failed; the row list is never optimistically changed. */
+  subTransactionError?: string | null
+  onAddSubTransaction?: (input: SubTransactionListInput) => void
+  onUpdateSubTransaction?: (id: string, input: SubTransactionListInput) => void
+  onRemoveSubTransaction?: (id: string) => void
+
   onSave: () => void
   onReset: () => void
   onCancel: () => void
@@ -67,7 +85,12 @@ export interface TransactionDetailViewProps {
   amount: string
   isIncome: boolean
   items: TransactionDetailItem[]
+  subTransactions: TransactionDetailSubTransactionItem[]
   attachments: TransactionAttachmentItem[]
+  /** An upload is in flight; the Add attachment control shows its busy state. */
+  attachmentsUploading: boolean
+  /** Inline error when the last transaction-attachment upload failed. */
+  attachmentUploadError: boolean
   downloadError: boolean
   isLoading: boolean
   isError: boolean
@@ -75,6 +98,10 @@ export interface TransactionDetailViewProps {
   isEditing: boolean
   /** Enter edit mode; seeded by the container from the fetched transaction. */
   onStartEdit: () => void
+  /** Open the file picker and upload the chosen file(s) onto this transaction. */
+  onAddAttachment: () => void
+  /** Ask for confirmation before deleting the transaction, its items, and its attachments. */
+  onRequestDelete: () => void
   edit: TransactionDetailEditProps
   onPreview: (attachment: TransactionAttachmentItem) => void
   onOpenActions: (attachment: TransactionAttachmentItem) => void

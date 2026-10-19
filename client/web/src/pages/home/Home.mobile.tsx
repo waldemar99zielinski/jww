@@ -10,6 +10,7 @@ import type { HomeViewProps } from './types'
 export default function HomeMobile({
   displayName,
   monthLabel,
+  currencyCode,
   balance,
   totalIncome,
   totalExpense,
@@ -35,10 +36,15 @@ export default function HomeMobile({
         </Button>
       </header>
 
-      <HeroBalanceCard balance={balance} income={totalIncome} expenses={totalExpense} />
+      <HeroBalanceCard
+        balance={balance}
+        income={totalIncome}
+        expenses={totalExpense}
+        currencyCode={currencyCode}
+      />
 
       <Section title="Spending by category" action={{ label: 'See all', to: '/budgets' }}>
-        <CategoryBreakdown items={breakdown} />
+        <CategoryBreakdown items={breakdown} currencyCode={currencyCode} />
       </Section>
 
       <Section title="Recent transactions" action={{ label: 'See all', to: '/transactions' }}>

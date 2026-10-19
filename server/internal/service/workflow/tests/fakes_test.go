@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -538,4 +539,81 @@ func (s *fakeAttachmentStorage) Delete(_ domain.AppContext, ref object_storage.R
 	s.deleted = append(s.deleted, ref.Key)
 	delete(s.objects, ref.Key)
 	return nil
+}
+
+// fakeSubTransactionRepo implements transaction_sub_transaction.Repository in
+// memory, mirroring the parent-order the Postgres adapter uses (created_at,
+// then id).
+type fakeSubTransactionRepo struct {
+	byID      map[uuid.UUID]domain.TransactionSubTransaction
+	createErr error
+	updateErr error
+	deleteErr error
+	getErr    error
+	listErr   error
+}
+
+func newFakeSubTransactionRepo(subs ...domain.TransactionSubTransaction) *fakeSubTransactionRepo {
+	byID := make(map[uuid.UUID]domain.TransactionSubTransaction, len(subs))
+	for _, s := range subs {
+		byID[s.ID] = s
+	}
+	return &fakeSubTransactionRepo{byID: byID}
+}
+
+func (r *fakeSubTransactionRepo) Create(_ domain.AppContext, s domain.TransactionSubTransaction, _ ...unit_of_work.UnitOfWork) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	r.byID[s.ID] = s
+	return nil
+}
+
+func (r *fakeSubTransactionRepo) Update(_ domain.AppContext, s domain.TransactionSubTransaction, _ ...unit_of_work.UnitOfWork) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
+	r.byID[s.ID] = s
+	return nil
+}
+
+func (r *fakeSubTransactionRepo) Delete(_ domain.AppContext, s domain.TransactionSubTransaction, _ ...unit_of_work.UnitOfWork) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	delete(r.byID, s.ID)
+	return nil
+}
+
+func (r *fakeSubTransactionRepo) GetByID(_ domain.AppContext, id uuid.UUID, _ ...unit_of_work.UnitOfWork) (*domain.TransactionSubTransaction, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	if s, ok := r.byID[id]; ok {
+		return &s, nil
+	}
+	return nil, nil
+}
+
+func (r *fakeSubTransactionRepo) ListByTransactionIDs(_ domain.AppContext, transactionIDs []int64, _ ...unit_of_work.UnitOfWork) ([]domain.TransactionSubTransaction, error) {
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+	want := make(map[int64]struct{}, len(transactionIDs))
+	for _, id := range transactionIDs {
+		want[id] = struct{}{}
+	}
+	var out []domain.TransactionSubTransaction
+	for _, s := range r.byID {
+		if _, ok := want[s.TransactionID]; ok {
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.Before(out[j].CreatedAt)
+		}
+		return out[i].ID.String() < out[j].ID.String()
+	})
+	return out, nil
 }

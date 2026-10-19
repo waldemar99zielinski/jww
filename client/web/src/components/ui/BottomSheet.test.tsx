@@ -54,6 +54,17 @@ describe('BottomSheet', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the close button square when the title is long', () => {
+    render(
+      <BottomSheet open={true} onClose={() => {}} title="a-very-long-attachment-filename-that-keeps-going-and-going.jpg">
+        <p>Content</p>
+      </BottomSheet>,
+    )
+
+    // Without `flex-none` the long title shrinks the button into a narrow rectangle.
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('flex-none')
+  })
+
   it('renders the title, description, and footer', () => {
     render(
       <BottomSheet
@@ -70,5 +81,17 @@ describe('BottomSheet', () => {
     expect(screen.getByText('Filters')).toBeInTheDocument()
     expect(screen.getByText('Narrow the list')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
+  })
+
+  it('can take a fixed height for tall, list-editing sheets', () => {
+    const { container } = render(
+      <BottomSheet open={true} onClose={() => {}} title="Items" height="80dvh">
+        <p>Content</p>
+      </BottomSheet>,
+    )
+
+    const panel = container.querySelector('.sheet-panel') as HTMLElement
+    expect(panel.style.height).toBe('80dvh')
+    expect(panel.style.maxHeight).toBe('80dvh')
   })
 })

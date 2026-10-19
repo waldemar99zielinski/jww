@@ -10,13 +10,15 @@ export interface BottomSheetProps {
   title: ReactNode
   description?: ReactNode
   footer?: ReactNode
+  /** Optional fixed panel height (e.g. "80dvh"); omit to size to content up to the sheet cap. */
+  height?: string
   children: ReactNode
 }
 
 const DISMISS_DISTANCE = 100
 const SLIDE_TRANSITION = 'transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]'
 
-export function BottomSheet({ open, onClose, title, description, footer, children }: BottomSheetProps) {
+export function BottomSheet({ open, onClose, title, description, footer, height, children }: BottomSheetProps) {
   const [entered, setEntered] = useState(open)
   const [dragging, setDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState(0)
@@ -90,7 +92,7 @@ export function BottomSheet({ open, onClose, title, description, footer, childre
         className={`sheet-panel relative flex w-full flex-col overflow-hidden rounded-t-3xl border border-line bg-surface shadow-[var(--shadow-md)] ${
           dragging ? 'transition-none will-change-transform' : SLIDE_TRANSITION
         }`}
-        style={{ transform: `translateY(${translateY})` }}
+        style={{ transform: `translateY(${translateY})`, ...(height ? { height, maxHeight: height } : {}) }}
       >
         <div
           className="shrink-0 touch-none"
@@ -103,11 +105,16 @@ export function BottomSheet({ open, onClose, title, description, footer, childre
             <span className="h-1 w-10 rounded-full bg-line" />
           </div>
           <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-3 pt-2">
-            <div>
+            <div className="min-w-0 break-words">
               <p className="m-0 text-base font-bold text-ink">{title}</p>
               {description && <p className="m-0 mt-0.5 text-xs text-muted">{description}</p>}
             </div>
-            <IconButton aria-label="Close" onClick={dismiss} icon={<IconClose className="h-4 w-4" />} className="h-8 w-8" />
+            <IconButton
+              aria-label="Close"
+              onClick={dismiss}
+              icon={<IconClose className="h-4 w-4" />}
+              className="h-8 w-8 flex-none"
+            />
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4 [touch-action:pan-y]">

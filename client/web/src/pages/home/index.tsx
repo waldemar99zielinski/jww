@@ -38,25 +38,28 @@ export default function HomePage() {
     const totals = new Map<string, number>()
     for (const t of transactions) {
       if (t.type !== 'expense') continue
-      totals.set(t.category_name, (totals.get(t.category_name) ?? 0) + Number(t.amount))
+      totals.set(t.category_name, (totals.get(t.category_name) ?? 0) + t.amount)
     }
     const max = Math.max(0, ...totals.values())
     return [...totals.entries()]
       .map(([categoryName, amount]) => ({
         categoryName,
-        amount,
+        amount: amount / 100,
         percent: max > 0 ? (amount / max) * 100 : 0,
       }))
       .sort((a, b) => b.amount - a.amount)
   }, [transactions])
 
   const summary = summaryQuery.data
-  const totalIncome = Number(summary?.total_income ?? 0)
-  const totalExpense = Number(summary?.total_expense ?? 0)
+  const totalIncomeCents = summary?.total_income ?? 0
+  const totalExpenseCents = summary?.total_expense ?? 0
+  const totalIncome = totalIncomeCents / 100
+  const totalExpense = totalExpenseCents / 100
 
   const props: HomeViewProps = {
     displayName: user?.display_name ?? 'there',
     monthLabel,
+    currencyCode: currency?.code ?? 'PLN',
     balance: totalIncome - totalExpense,
     totalIncome,
     totalExpense,

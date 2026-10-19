@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
-import { useCreateTransaction, useTransaction, useTransactions, useUpdateTransaction } from '@/hooks/useTransactions'
+import { useCreateTransaction, useDeleteTransaction, useTransaction, useTransactions, useUpdateTransaction } from '@/hooks/useTransactions'
 import { createTestQueryClient } from '@/test/renderWithProviders'
 import { fixtureTransactions, fixtureUser } from '@/test/fixtures'
 
@@ -83,5 +83,22 @@ describe('useUpdateTransaction', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.id).toBe(1)
     expect(result.current.data?.name).toBe('Renamed')
+  })
+})
+
+describe('useDeleteTransaction', () => {
+  it('deletes the transaction and drops its detail query from the cache', async () => {
+    const queryClient = createTestQueryClient()
+    function localWrapper({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    }
+    queryClient.setQueryData(['transactions', 'detail', 1], fixtureTransactions[0])
+
+    const { result } = renderHook(() => useDeleteTransaction(), { wrapper: localWrapper })
+
+    result.current.mutate(1)
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(queryClient.getQueryData(['transactions', 'detail', 1])).toBeUndefined()
   })
 })

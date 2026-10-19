@@ -31,7 +31,8 @@
 - Upload uses `kernel.ReadSingleMultipartFile` and is exempt from the global body cap; download streams via `kernel.WriteDownload`.
 - `GET /v1/transactions/{transactionID}` uses `TransactionDetailsResponse`: every attachment includes `preview_grant`, containing a five-minute capability JWT for safe preview media or `null` for download-only media. List/create responses retain the lightweight `TransactionResponse` and do not mint grants. Clients use the token with `/v1/attachment-content?grant=...`.
 - `listTransactionsHandler` builds the shared `transaction.Filter`, validating enums with `domain.TransactionType.Valid()`/`domain.TransactionSource.Valid()` and using shared sentinels `kernel.ErrInvalidType`/`kernel.ErrInvalidSource`; parses `created_from`/`created_to` with `time.RFC3339`.
-- With no query filters, list returns every transaction ordered by `id DESC` (newest first). The same ordering applies to filtered results.
+- Sorting uses `sort_key` (only `date` is supported) and `sort_order` (`asc` or `desc`). Omitted values default to `date` descending in the service/gateway. Invalid values are a 400.
+- With no query filters, list returns every transaction ordered by `created_at DESC` (newest first). The same default ordering applies to filtered results.
 - This is the only router (besides the standalone attachment router) that imports `internal/service/workflow`.
 
 ## Testing requirement for this directory

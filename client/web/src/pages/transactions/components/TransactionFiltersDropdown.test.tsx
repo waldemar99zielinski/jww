@@ -26,6 +26,8 @@ function baseProps() {
     onDateFromChange: vi.fn(),
     dateTo: '',
     onDateToChange: vi.fn(),
+    sortOrder: 'desc' as const,
+    onSortOrderChange: vi.fn(),
   }
 }
 
@@ -76,5 +78,37 @@ describe('TransactionFiltersDropdown', () => {
     render(<TransactionFiltersDropdown {...baseProps()} filter="income" nameFilter="coffee" />)
 
     expect(screen.getByRole('button', { name: /filters/i })).toHaveTextContent('2')
+  })
+
+  it('labels the default user selection as all users', async () => {
+    const user = userEvent.setup()
+    render(<TransactionFiltersDropdown {...baseProps()} />)
+
+    await user.click(screen.getByRole('button', { name: /filters/i }))
+
+    expect(screen.getAllByText('All users').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Current user')).not.toBeInTheDocument()
+  })
+
+  it('commits the sort order when Apply is pressed', async () => {
+    const user = userEvent.setup()
+    const props = baseProps()
+    render(<TransactionFiltersDropdown {...props} />)
+
+    await user.click(screen.getByRole('button', { name: /filters/i }))
+    await user.selectOptions(screen.getByLabelText('Order'), 'Ascending')
+    await user.click(screen.getByRole('button', { name: /^apply$/i }))
+
+    expect(props.onSortOrderChange).toHaveBeenCalledWith('asc')
+  })
+
+  it('returns the sort order to the descending default on Reset', async () => {
+    const user = userEvent.setup()
+    render(<TransactionFiltersDropdown {...baseProps()} sortOrder="asc" />)
+
+    await user.click(screen.getByRole('button', { name: /filters/i }))
+    await user.click(screen.getByRole('button', { name: /^reset$/i }))
+
+    expect(screen.getByLabelText('Order')).toHaveValue('desc')
   })
 })

@@ -12,11 +12,11 @@ that already has the request/process context logs it once.
 | Layer | Logs? | Component label |
 |---|---|---|
 | `internal/domain` | **Never** — no I/O; importing this package here would cycle (domain is imported *by* logger) | — |
-| `internal/service/*` (use cases) | **Never** — import rules only allow `domain` + `service/unit_of_work`, so `utils/logger` can't even be imported; propagate a typed error instead | — |
+| `internal/service/*` (use cases) | **Almost never** — the default allowlist is `domain` + `service/unit_of_work` + stdlib, so most packages can't import this one at all; propagate a typed error instead. A use case may import it for **`Debug`-only step tracing** (see `transaction_attachment_extraction`): component `service.<pkg>`, `WithContext` on every line, never above `Debug`, never secrets | `service.<pkg>` |
 | `internal/adapter/*` (gateway/schema/security) | **Never**, by convention (not a cycle) — let the error bubble to the one caller that logs; logging it here too just duplicates the same failure | — |
 | `internal/infrastructure/database` | Yes — migration/startup events | `database` |
 | `internal/infrastructure/http_server/kernel` | Yes — request lifecycle (`RequestLogger`, `Recoverer`) | `http_server` |
-| `internal/infrastructure/http_server/routers/<resource>` | **No, for now** — `kernel`'s `RequestLogger` middleware already logs every invocation (`"request completed"`, method/path/status/duration); routers carry no logger of their own. Re-add a `var log = logger.New().WithComponent("http_server.<resource>")` here only if a handler needs to log something the middleware can't see | — |
+| `internal/infrastructure/http_server/routers/<resource>` | **Mostly no** — `kernel`'s `RequestLogger` middleware already logs every invocation (`"request completed"`, method/path/status/duration). Declare a package `var log = logger.New().WithComponent("http_server.<resource>")` only when a handler must log something the middleware can't see; today only `transaction_attachment` does, for extraction outcomes (attachment id, duration, failure kind, unwrapped cause) | `http_server.<resource>` (only `http_server.transaction_attachment` today) |
 | `cmd/server` | Yes — process lifecycle (startup, listening, shutdown, fatal error) | `cmd.server` |
 | `scripts/<name>` | Yes — CLI-style entry points, business events | `scripts.<name>` |
 
@@ -42,7 +42,7 @@ Config: `LOG_LEVEL` (`info`|`debug`|`warn`|`error`), `LOG_PRETTY`.
 ## Rules
 
 - Configure **once** at startup (`cmd/server`), before anything logs.
-- **Component labels are dot-delimited:** `cmd.server` for the process, `http_server` for the kernel, `database` for migrations, `scripts.<name>` for CLI entry points. Never log in application code without a component. (`http_server.<resource>` is reserved for routers if one ever needs its own logger — see "Where to log" above.)
+- **Component labels are dot-delimited:** `cmd.server` for the process, `http_server` for the kernel, `database` for migrations, `scheduler` for the jobs runner, `scripts.<name>` for CLI entry points, `http_server.<resource>` for a router that logs, and `service.<pkg>` for a use case's `Debug` trace. Never log in application code without a component.
 - Prefer `WithContext(appCtx)` so request attributes attach automatically.
 - Declare one package-local `var log = logger.New().WithComponent("...")` per package; don't share another package's logger.
 - **Typed attrs, not formatted strings:** `slog.String("user_id", id)`, not `fmt.Sprintf("user_id=%s", id)` baked into the message — keeps fields queryable in the JSON output.

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { IconDownload, IconImage, IconTrash } from '@/components/icons'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
-import { formatBytes } from '../formatBytes'
+import { formatBytes } from '@/lib/formatBytes'
 import type { TransactionAttachmentItem } from '../types'
 
 export interface AttachmentActionsProps {

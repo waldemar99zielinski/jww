@@ -7,6 +7,7 @@ import type { HomeViewProps } from './types'
 export default function HomeDesktop({
   displayName,
   monthLabel,
+  currencyCode,
   balance,
   totalIncome,
   totalExpense,
@@ -25,12 +26,17 @@ export default function HomeDesktop({
         </span>
       </header>
 
-      <HeroBalanceCard balance={balance} income={totalIncome} expenses={totalExpense} />
+      <HeroBalanceCard
+        balance={balance}
+        income={totalIncome}
+        expenses={totalExpense}
+        currencyCode={currencyCode}
+      />
 
       <div className="grid grid-cols-2 gap-8">
         <Section title="Spending by category" action={{ label: 'See all', to: '/budgets' }}>
           <div className="rounded-2xl border border-line bg-surface p-5">
-            <CategoryBreakdown items={breakdown} />
+            <CategoryBreakdown items={breakdown} currencyCode={currencyCode} />
           </div>
         </Section>
 

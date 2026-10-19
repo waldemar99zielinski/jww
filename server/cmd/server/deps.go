@@ -10,6 +10,8 @@ import (
 
 	"jww/internal/adapter/frankfurter"
 	"jww/internal/adapter/gateway"
+	"jww/internal/adapter/imageprep"
+	"jww/internal/adapter/openai"
 	"jww/internal/adapter/security"
 	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/adapter/storage"
@@ -22,7 +24,9 @@ import (
 	"jww/internal/service/object_storage"
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
+	transaction_attachment_extraction "jww/internal/service/transaction_attachment_extraction"
 	"jww/internal/service/transaction_category"
+	"jww/internal/service/transaction_sub_transaction"
 	"jww/internal/service/user"
 	"jww/internal/service/workflow"
 )
@@ -38,6 +42,8 @@ func buildDeps(
 	jwtConfig jwtadapter.Config,
 	frankfurterConfig frankfurter.Config,
 	storageConfig storage.Config,
+	openaiConfig openai.Config,
+	extractionConfig transaction_attachment_extraction.Config,
 	corsOrigins []string,
 	maxBodyBytes int64,
 ) (*kernel.Deps, error) {
@@ -53,6 +59,7 @@ func buildDeps(
 	categoryRepo := gateway.NewPostgresTransactionCategoryRepository(pool)
 	transactionRepo := gateway.NewPostgresTransactionRepository(pool)
 	attachmentRepo := gateway.NewPostgresTransactionAttachmentRepository(pool)
+	subTransactionRepo := gateway.NewPostgresTransactionSubTransactionRepository(pool)
 
 	objectStore, err := storage.NewS3Store(ctx, storageConfig)
 	if err != nil {
@@ -66,21 +73,30 @@ func buildDeps(
 	categoryService := transaction_category.NewService(categoryRepo, uowManager)
 	transactionService := transaction.NewService(transactionRepo, uowManager)
 	attachmentStore := object_storage.Namespaced(objectStore, object_storage.StorageTransactionAttachmentsNamespace)
-	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStore, reportOrphanedObject, attachmentGrantService)
+	attachmentService := transaction_attachment.NewService(attachmentRepo, attachmentStore, reportOrphanedObject, attachmentGrantService).
+		WithContentNormalizer(imageprep.New())
+	subTransactionService := transaction_sub_transaction.NewService(subTransactionRepo, uowManager)
+	extractionService := transaction_attachment_extraction.NewService(
+		openai.NewClient(openaiConfig),
+		draftAttachmentSource{attachments: attachmentService},
+		extractionCategorySource{categories: categoryService},
+		extractionConfig,
+	)
 
 	return &kernel.Deps{
-		AuthService:                  authService,
-		UserService:                  userService,
-		SignupWorkflow:               workflow.NewSignupWorkflow(userService),
-		CurrencyService:              currencyService,
-		CurrencyExchangeRateWorkflow: workflow.NewCurrencyExchangeRateWorkflow(currencyService, exchangeRateService, rateSource, uowManager),
-		TransactionCategoryService:   categoryService,
-		TransactionService:           transactionService,
-		TransactionAttachmentService: attachmentService,
-		TransactionWorkflow:          workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, attachmentService, uowManager),
-		SummaryWorkflow:              workflow.NewSummaryWorkflow(currencyService, userService, transactionService, exchangeRateService, uowManager),
-		CorsOrigins:                  corsOrigins,
-		MaxBodyBytes:                 maxBodyBytes,
+		AuthService:                            authService,
+		UserService:                            userService,
+		SignupWorkflow:                         workflow.NewSignupWorkflow(userService),
+		CurrencyService:                        currencyService,
+		CurrencyExchangeRateWorkflow:           workflow.NewCurrencyExchangeRateWorkflow(currencyService, exchangeRateService, rateSource, uowManager),
+		TransactionCategoryService:             categoryService,
+		TransactionService:                     transactionService,
+		TransactionAttachmentService:           attachmentService,
+		TransactionAttachmentExtractionService: extractionService,
+		TransactionWorkflow:                    workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, attachmentService, subTransactionService, uowManager),
+		SummaryWorkflow:                        workflow.NewSummaryWorkflow(currencyService, userService, transactionService, exchangeRateService, uowManager),
+		CorsOrigins:                            corsOrigins,
+		MaxBodyBytes:                           maxBodyBytes,
 	}, nil
 }
 
@@ -93,4 +109,43 @@ func reportOrphanedObject(ctx domain.AppContext, attachmentID uuid.UUID, cleanup
 		slog.String("attachment_id", attachmentID.String()),
 		slog.String("error", cleanupErr.Error()),
 	)
+}
+
+// draftAttachmentSource adapts the attachment service to
+// transaction_attachment_extraction.AttachmentSource. The port names its
+// methods DraftAttachment and ContentGrant, which don't match the service's
+// GetDraft / IssueDraftGrant signatures (the latter takes a purpose), so this
+// small cmd-local adapter bridges them.
+type draftAttachmentSource struct {
+	attachments *transaction_attachment.Service
+}
+
+func (s draftAttachmentSource) DraftAttachment(ctx domain.AppContext, id uuid.UUID) (*domain.TransactionAttachment, error) {
+	return s.attachments.GetDraft(ctx, id)
+}
+
+func (s draftAttachmentSource) ContentGrant(ctx domain.AppContext, id uuid.UUID) (string, error) {
+	return s.attachments.IssueDraftGrant(ctx, id, transaction_attachment.GrantPurposePreview)
+}
+
+type extractionCategorySource struct {
+	categories *transaction_category.Service
+}
+
+func (s extractionCategorySource) TransactionCategories(ctx domain.AppContext) (expense, income []string, err error) {
+	expenseCategories, err := s.categories.ListByType(ctx, domain.TransactionCategoryTypeExpense, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	incomeCategories, err := s.categories.ListByType(ctx, domain.TransactionCategoryTypeIncome, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, category := range expenseCategories {
+		expense = append(expense, category.Name)
+	}
+	for _, category := range incomeCategories {
+		income = append(income, category.Name)
+	}
+	return expense, income, nil
 }

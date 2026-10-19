@@ -220,6 +220,18 @@ func TestService_List_InvalidFilterNeverCallsRepository(t *testing.T) {
 	assert.Zero(t, repo.listCalls)
 }
 
+func TestService_List_InvalidSortNeverCallsRepository(t *testing.T) {
+	repo := newFakeRepo()
+	svc := transaction.NewService(repo, &fakeUoWManager{})
+
+	_, err := svc.List(newAppContext(), &transaction.Filter{
+		Sort: transaction.Sort{Key: "bogus", Order: transaction.SortOrderAsc},
+	})
+
+	require.Error(t, err)
+	assert.Zero(t, repo.listCalls)
+}
+
 func TestService_Update_HappyPathFinishesTransaction(t *testing.T) {
 	existing := domain.Transaction{ID: 1, Type: domain.TransactionTypeExpense, Amount: 500, Category: testCategory, Name: "Old"}
 	repo := newFakeRepo(existing)

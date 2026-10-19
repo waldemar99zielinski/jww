@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { IconDots, IconPaperclip, IconSpinner } from '@/components/icons'
 import { IconButton } from '@/components/ui/IconButton'
-import { formatBytes } from '../formatBytes'
-import { previewKindFor } from '../previewKind'
+import { formatBytes } from '@/lib/formatBytes'
+import { previewKindFor } from '@/lib/previewKind'
 import type { TransactionAttachmentItem } from '../types'
 
 export interface AttachmentListProps {

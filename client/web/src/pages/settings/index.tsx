@@ -3,6 +3,7 @@ import { ResponsiveView } from '@/components/ResponsiveView'
 import { useAuth } from '@/hooks/useAuth'
 import { useDefaultCurrency } from '@/hooks/useDefaultCurrency'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
+import { APP_VERSION } from '@/lib/version'
 import type { InstallViewProps, SettingsViewProps } from './types'
 
 const Mobile = lazy(() => import('./Settings.mobile'))
@@ -38,6 +39,7 @@ export default function SettingsPage() {
     displayName: user?.display_name ?? 'Guest',
     username: user?.username ?? '',
     currencyCode: currency?.code,
+    version: APP_VERSION,
     onLogout: logout,
     install,
   }

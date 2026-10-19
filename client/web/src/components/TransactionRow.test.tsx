@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import type { TransactionDto } from '@/api/types'
 import { TransactionRow } from '@/components/TransactionRow'
+import { formatSignedAmount } from '@/lib/currency'
+import { normalizeText } from '@/test/normalizeText'
 
 const baseTransaction: TransactionDto = {
   id: 1,
   type: 'expense',
-  amount: '42.50',
+  amount: 4250,
   currency_code: 'EUR',
   category_id: 'cat-groceries',
   category_name: 'Groceries',
@@ -17,6 +19,7 @@ const baseTransaction: TransactionDto = {
   created_at: '2026-10-10T09:30:00Z',
   description: '',
   attachments: [],
+  sub_transactions: [],
 }
 
 describe('TransactionRow', () => {
@@ -30,6 +33,9 @@ describe('TransactionRow', () => {
     expect(screen.getByText('Weekly shop')).toBeInTheDocument()
     expect(screen.getByText('Today')).toBeInTheDocument()
     expect(container.querySelector('.text-ink-soft')).toBeInTheDocument()
+    expect(
+      screen.getByText(normalizeText(formatSignedAmount(42.5, 'expense', 'EUR'))),
+    ).toBeInTheDocument()
   })
 
   it('renders income with the bold amount style', () => {

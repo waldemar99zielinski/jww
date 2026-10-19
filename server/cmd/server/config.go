@@ -2,11 +2,14 @@ package main
 
 import (
 	"jww/internal/adapter/frankfurter"
+	"jww/internal/adapter/openai"
 	jwtadapter "jww/internal/adapter/security/jwt"
 	"jww/internal/adapter/storage"
 	"jww/internal/infrastructure/database"
 	"jww/internal/infrastructure/http_server"
 	"jww/internal/infrastructure/scheduler"
+	transaction_attachment_extraction "jww/internal/service/transaction_attachment_extraction"
+	"jww/utils/configuration"
 	"jww/utils/logger"
 )
 
@@ -21,6 +24,8 @@ type Config struct {
 	Scheduler   scheduler.Config
 	Frankfurter frankfurter.Config
 	Storage     storage.Config
+	OpenAI      openai.Config
+	Extraction  transaction_attachment_extraction.Config
 }
 
 func LoadConfig() (Config, error) {
@@ -52,6 +57,14 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	openaiConfig, err := openai.LoadConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	extractionConfig, err := configuration.Load[transaction_attachment_extraction.Config]()
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		Http:        httpConfig,
 		Database:    databaseConfig,
@@ -60,5 +73,7 @@ func LoadConfig() (Config, error) {
 		Scheduler:   schedulerConfig,
 		Frankfurter: frankfurterConfig,
 		Storage:     storageConfig,
+		OpenAI:      openaiConfig,
+		Extraction:  extractionConfig,
 	}, nil
 }

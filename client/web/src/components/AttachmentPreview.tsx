@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState, type TouchEvent } from 'react'
-import { downloadTransactionAttachment } from '@/api/attachments'
 import { IconClose, IconDownload, IconSpinner } from '@/components/icons'
 import { Button } from '@/components/ui/Button'
 import { useScrollLock } from '@/hooks/useScrollLock'
-import { formatBytes } from '../formatBytes'
-import { previewKindFor } from '../previewKind'
-import type { TransactionAttachmentItem } from '../types'
+import { formatBytes } from '@/lib/formatBytes'
+import { previewKindFor } from '@/lib/previewKind'
+
+/** A ready-to-render attachment row. `previewUrl` is the inline grant/local-object URL, when one exists. */
+export interface AttachmentPreviewItem {
+  id: string
+  filename: string
+  mediaType: string
+  byteSize: number
+  /** Inline preview URL for previewable media (image/PDF), or null for blob/download-only files. */
+  previewUrl: string | null
+}
 
 export interface AttachmentPreviewProps {
-  transactionId: number
-  attachment: TransactionAttachmentItem
+  attachment: AttachmentPreviewItem
   isDownloading: boolean
-  onDownload: (attachment: TransactionAttachmentItem) => void
+  onDownload: (attachment: AttachmentPreviewItem) => void
+  /** Fetches the bytes for any media type without an inline preview URL. */
+  loadBlob: (attachmentId: string) => Promise<Blob>
   onClose: () => void
 }
 
@@ -24,20 +33,20 @@ const CLOSE_THRESHOLD_MAX_PX = 140
 const EXIT_MS = 220
 
 /**
- * Full-screen lightbox for one attachment. Images and PDFs render straight from the server's inline
- * `preview_grant` URL (no extra request); video, audio and text are pulled as a blob through the
- * protected download route, because those types don't get a grant. Anything the browser can't render
- * degrades to a "download it instead" message. Closes on the X, Escape, a backdrop tap, or a
- * downward swipe.
+ * Full-screen lightbox for one attachment, shared by the transaction detail page (linked
+ * attachments) and the Add page (uploaded drafts). Images and PDFs render straight from an inline
+ * URL when one is available; otherwise video, audio and text are pulled as a blob through the
+ * caller's protected download route. Anything the browser can't render degrades to a "download it
+ * instead" message. Closes on the X, Escape, a backdrop tap, or a downward swipe.
  *
- * The overlay is mounted per attachment (the container keys it by id), so it never has to switch
+ * The overlay is mounted per attachment (the parent keys it by id), so it never has to switch
  * sources mid-life and the resolved state can be derived from props + fetch results during render.
  */
 export function AttachmentPreview({
-  transactionId,
   attachment,
   isDownloading,
   onDownload,
+  loadBlob,
   onClose,
 }: AttachmentPreviewProps) {
   const kind = previewKindFor(attachment.mediaType)
@@ -59,6 +68,12 @@ export function AttachmentPreview({
 
   const needsMediaLoad = kind === 'image' || kind === 'pdf' || kind === 'video' || kind === 'audio'
   const showLoader = status === 'loading' || (status === 'ready' && needsMediaLoad && !mediaLoaded)
+
+  // Callers can pass an inline loader without restarting the fetch on every render.
+  const loadBlobRef = useRef(loadBlob)
+  useEffect(() => {
+    loadBlobRef.current = loadBlob
+  })
 
   // Swipe-down-to-dismiss (touch only). A short drag springs back; a long one animates out first.
   const [offsetY, setOffsetY] = useState(0)
@@ -128,12 +143,13 @@ export function AttachmentPreview({
     setOffsetY(0)
   }
 
-  // Fetch the bytes only when there's no grant URL (video/audio/text, plus unlisted image types).
+  // Fetch the bytes only when there's no inline URL (video/audio/text, plus unlisted image types).
   useEffect(() => {
     if (!kind || grantSrc) return
     let objectUrl: string | null = null
     let cancelled = false
-    downloadTransactionAttachment(transactionId, attachment.id)
+    loadBlobRef
+      .current(attachment.id)
       .then(async (blob) => {
         if (cancelled) return
         if (kind === 'text') {
@@ -150,7 +166,7 @@ export function AttachmentPreview({
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [attachment.id, grantSrc, kind, transactionId])
+  }, [attachment.id, grantSrc, kind])
 
   // Escape closes; the background page (including the desktop shell's scroll container) is frozen.
   useScrollLock()

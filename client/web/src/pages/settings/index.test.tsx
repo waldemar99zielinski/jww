@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
+import { APP_VERSION } from '@/lib/version'
 import { fixtureUser } from '@/test/fixtures'
 import { createTestStore, renderWithProviders } from '@/test/renderWithProviders'
 import SettingsPage from './index'
@@ -34,6 +35,7 @@ describe('SettingsPage', () => {
     expect(await screen.findByText(fixtureUser.display_name)).toBeInTheDocument()
     expect(screen.getByText(`@${fixtureUser.username}`)).toBeInTheDocument()
     expect(screen.getByText('EUR')).toBeInTheDocument()
+    expect(screen.getByText(`v${APP_VERSION}`)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /categories/i })).toHaveAttribute('href', '/settings/categories')
     expect(screen.getByRole('link', { name: /currency/i })).toHaveAttribute('href', '/settings/currencies')
   })
