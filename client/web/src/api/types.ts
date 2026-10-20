@@ -11,6 +11,14 @@ export interface UserDto {
   created_at: string
 }
 
+/** One enrolled biometric (Face ID/Touch ID/...) credential. */
+export interface WebAuthnCredentialDto {
+  id: string
+  name: string
+  created_at: string
+  last_used_at: string | null
+}
+
 export interface CurrencyDto {
   code: string
   name: string

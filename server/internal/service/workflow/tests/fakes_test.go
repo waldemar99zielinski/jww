@@ -3,6 +3,7 @@ package workflow_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"sort"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
 	"jww/internal/service/unit_of_work"
+	"jww/internal/service/webauthn_credential"
 )
 
 // newAppContext builds a minimal AppContext for tests that aren't driven by
@@ -616,4 +618,183 @@ func (r *fakeSubTransactionRepo) ListByTransactionIDs(_ domain.AppContext, trans
 		return out[i].ID.String() < out[j].ID.String()
 	})
 	return out, nil
+}
+
+// fakeWebAuthnCredentialRepo implements webauthn_credential.Repository.
+type fakeWebAuthnCredentialRepo struct {
+	byID           map[uuid.UUID]domain.WebAuthnCredential
+	byCredentialID map[string]uuid.UUID
+	createErr      error
+	getByIDErr     error
+	getByCredErr   error
+	getByUserErr   error
+	updateSignErr  error
+	deleteErr      error
+}
+
+func newFakeWebAuthnCredentialRepo(credentials ...domain.WebAuthnCredential) *fakeWebAuthnCredentialRepo {
+	byID := make(map[uuid.UUID]domain.WebAuthnCredential, len(credentials))
+	byCredentialID := make(map[string]uuid.UUID, len(credentials))
+	for _, c := range credentials {
+		byID[c.ID] = c
+		byCredentialID[string(c.CredentialID)] = c.ID
+	}
+	return &fakeWebAuthnCredentialRepo{byID: byID, byCredentialID: byCredentialID}
+}
+
+func (r *fakeWebAuthnCredentialRepo) Create(_ domain.AppContext, c domain.WebAuthnCredential, _ ...unit_of_work.UnitOfWork) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	r.byID[c.ID] = c
+	r.byCredentialID[string(c.CredentialID)] = c.ID
+	return nil
+}
+
+func (r *fakeWebAuthnCredentialRepo) GetByID(_ domain.AppContext, id uuid.UUID, _ ...unit_of_work.UnitOfWork) (*domain.WebAuthnCredential, error) {
+	if r.getByIDErr != nil {
+		return nil, r.getByIDErr
+	}
+	if c, ok := r.byID[id]; ok {
+		return &c, nil
+	}
+	return nil, nil
+}
+
+func (r *fakeWebAuthnCredentialRepo) GetByCredentialID(_ domain.AppContext, credentialID []byte, _ ...unit_of_work.UnitOfWork) (*domain.WebAuthnCredential, error) {
+	if r.getByCredErr != nil {
+		return nil, r.getByCredErr
+	}
+	if id, ok := r.byCredentialID[string(credentialID)]; ok {
+		c := r.byID[id]
+		return &c, nil
+	}
+	return nil, nil
+}
+
+func (r *fakeWebAuthnCredentialRepo) GetByUserID(_ domain.AppContext, userID uuid.UUID, _ ...unit_of_work.UnitOfWork) ([]domain.WebAuthnCredential, error) {
+	if r.getByUserErr != nil {
+		return nil, r.getByUserErr
+	}
+	var out []domain.WebAuthnCredential
+	for _, c := range r.byID {
+		if c.UserID == userID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeWebAuthnCredentialRepo) UpdateSignCount(_ domain.AppContext, id uuid.UUID, signCount uint32, lastUsedAt time.Time, _ ...unit_of_work.UnitOfWork) error {
+	if r.updateSignErr != nil {
+		return r.updateSignErr
+	}
+	c := r.byID[id]
+	c.SignCount = signCount
+	c.LastUsedAt = &lastUsedAt
+	r.byID[id] = c
+	return nil
+}
+
+func (r *fakeWebAuthnCredentialRepo) Delete(_ domain.AppContext, id uuid.UUID, _ ...unit_of_work.UnitOfWork) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	delete(r.byID, id)
+	return nil
+}
+
+// fakeCeremony implements webauthn_credential.Ceremony.
+type fakeCeremony struct {
+	beginRegOptions domain.WebAuthnCeremonyOptions
+	beginRegSession domain.WebAuthnCeremonySession
+	beginRegErr     error
+
+	finishRegCredentialID, finishRegPublicKey, finishRegAAGUID []byte
+	finishRegAttestationType                                   string
+	finishRegSignCount                                         uint32
+	finishRegTransports                                        []string
+	finishRegBackupEligible                                    bool
+	finishRegErr                                               error
+
+	beginLoginOptions domain.WebAuthnCeremonyOptions
+	beginLoginSession domain.WebAuthnCeremonySession
+	beginLoginErr     error
+
+	// loginRawID/loginUserHandle are passed to the handler FinishLogin
+	// invokes, simulating what an authenticator response would carry.
+	loginRawID, loginUserHandle []byte
+	// postHandlerErr simulates the ceremony's own cryptographic
+	// verification failing even after the handler successfully resolved a
+	// user (e.g. bad signature, clone-counter mismatch).
+	postHandlerErr          error
+	finishLoginCredentialID []byte
+	finishLoginSignCount    uint32
+}
+
+func (c *fakeCeremony) BeginRegistration(domain.User, []domain.WebAuthnCredential) (domain.WebAuthnCeremonyOptions, domain.WebAuthnCeremonySession, error) {
+	return c.beginRegOptions, c.beginRegSession, c.beginRegErr
+}
+
+func (c *fakeCeremony) FinishRegistration(domain.User, []domain.WebAuthnCredential, domain.WebAuthnCeremonySession, domain.WebAuthnCeremonyResponse) ([]byte, []byte, []byte, string, uint32, []string, bool, error) {
+	return c.finishRegCredentialID, c.finishRegPublicKey, c.finishRegAAGUID, c.finishRegAttestationType, c.finishRegSignCount, c.finishRegTransports, c.finishRegBackupEligible, c.finishRegErr
+}
+
+func (c *fakeCeremony) BeginLogin() (domain.WebAuthnCeremonyOptions, domain.WebAuthnCeremonySession, error) {
+	return c.beginLoginOptions, c.beginLoginSession, c.beginLoginErr
+}
+
+func (c *fakeCeremony) FinishLogin(handler webauthn_credential.DiscoverableUserHandler, _ domain.WebAuthnCeremonySession, _ domain.WebAuthnCeremonyResponse) (domain.User, []byte, uint32, error) {
+	u, _, err := handler(c.loginRawID, c.loginUserHandle)
+	if err != nil {
+		return domain.User{}, nil, 0, err
+	}
+	if c.postHandlerErr != nil {
+		return domain.User{}, nil, 0, c.postHandlerErr
+	}
+	return u, c.finishLoginCredentialID, c.finishLoginSignCount, nil
+}
+
+// fakeChallengeTokens implements webauthn_credential.ChallengeTokens.
+type fakeChallengeTokens struct {
+	issueRegToken    string
+	issueRegErr      error
+	verifyRegUserID  uuid.UUID
+	verifyRegSession json.RawMessage
+	verifyRegErr     error
+
+	issueLoginToken    string
+	issueLoginErr      error
+	verifyLoginSession json.RawMessage
+	verifyLoginErr     error
+}
+
+func (c *fakeChallengeTokens) IssueRegistration(uuid.UUID, json.RawMessage) (string, error) {
+	return c.issueRegToken, c.issueRegErr
+}
+
+func (c *fakeChallengeTokens) VerifyRegistration(string) (uuid.UUID, json.RawMessage, error) {
+	return c.verifyRegUserID, c.verifyRegSession, c.verifyRegErr
+}
+
+func (c *fakeChallengeTokens) IssueLogin(json.RawMessage) (string, error) {
+	return c.issueLoginToken, c.issueLoginErr
+}
+
+func (c *fakeChallengeTokens) VerifyLogin(string) (json.RawMessage, error) {
+	return c.verifyLoginSession, c.verifyLoginErr
+}
+
+// fakeTokenService implements auth.TokenService.
+type fakeTokenService struct {
+	issueToken string
+	issueErr   error
+}
+
+func (s *fakeTokenService) Issue(uuid.UUID) (string, error) {
+	return s.issueToken, s.issueErr
+}
+
+func (s *fakeTokenService) Verify(string) (*uuid.UUID, error) {
+	return nil, nil
 }

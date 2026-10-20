@@ -7,7 +7,7 @@ const rightTabs = primaryNavItems.slice(2)
 
 export function BottomNav() {
   return (
-    <nav className="tabbar fixed inset-x-0 bottom-0 z-10 flex h-[72px] items-center justify-around border-t border-line pb-[env(safe-area-inset-bottom)] standalone:h-[88px] standalone:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+    <nav className="tabbar fixed inset-x-0 bottom-0 z-10 box-content flex h-[var(--bottom-nav-height)] items-center justify-around border-t border-line pb-[var(--bottom-nav-bottom-gap)]">
       {leftTabs.map((tab) => (
         <NavTab key={tab.to} {...tab} />
       ))}

@@ -20,6 +20,7 @@ import (
 	transaction_attachment "jww/internal/infrastructure/http_server/routers/transaction_attachment"
 	"jww/internal/infrastructure/http_server/routers/transaction_category"
 	"jww/internal/infrastructure/http_server/routers/user"
+	"jww/internal/infrastructure/http_server/routers/webauthn"
 )
 
 // Timeouts applied to every connection the server accepts. ReadHeaderTimeout
@@ -86,6 +87,7 @@ func NewRouter(deps *kernel.Deps) http.Handler {
 		transaction.Mount(public, protected, deps)
 		transaction_attachment.Mount(public, protected, deps)
 		summary.Mount(public, protected, deps)
+		webauthn.Mount(public, protected, deps)
 	})
 
 	return r

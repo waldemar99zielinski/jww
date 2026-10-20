@@ -30,6 +30,11 @@ func TestPublicVsProtectedRouting(t *testing.T) {
 		{"sub-transaction create is protected", http.MethodPost, "/api/v1/transactions/1/sub-transactions", http.StatusUnauthorized},
 		{"sub-transaction update is protected", http.MethodPatch, "/api/v1/transactions/1/sub-transactions/4f4dbdf7-cdc5-451a-820d-e0180ceec831", http.StatusUnauthorized},
 		{"sub-transaction delete is protected", http.MethodDelete, "/api/v1/transactions/1/sub-transactions/4f4dbdf7-cdc5-451a-820d-e0180ceec831", http.StatusUnauthorized},
+		{"webauthn register begin is protected", http.MethodPost, "/api/v1/webauthn/credentials/register/begin", http.StatusUnauthorized},
+		{"webauthn register finish is protected", http.MethodPost, "/api/v1/webauthn/credentials/register/finish", http.StatusUnauthorized},
+		{"webauthn credentials list is protected", http.MethodGet, "/api/v1/webauthn/credentials", http.StatusUnauthorized},
+		{"webauthn credential delete is protected", http.MethodDelete, "/api/v1/webauthn/credentials/4f4dbdf7-cdc5-451a-820d-e0180ceec831", http.StatusUnauthorized},
+		{"webauthn login finish is public", http.MethodPost, "/api/v1/webauthn/login/finish", http.StatusBadRequest},
 	}
 
 	for _, tc := range cases {

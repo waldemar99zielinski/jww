@@ -7,8 +7,10 @@ import type {
   TransactionDto,
   TransactionPrefillDto,
   UserDto,
+  WebAuthnCredentialDto,
 } from '@/api/types'
 import type { TokenResponse } from '@/api/auth'
+import type { WebAuthnBeginResponse } from '@/api/webauthn'
 
 export const fixtureUser: UserDto = {
   id: 'user-1',
@@ -175,4 +177,16 @@ export const fixtureSummary: SummaryDto = {
 export const fixtureTokenResponse: TokenResponse = {
   access_token: 'fixture-access-token',
   token_type: 'Bearer',
+}
+
+export const fixtureWebAuthnCredential: WebAuthnCredentialDto = {
+  id: 'passkey-1',
+  name: 'iPhone',
+  created_at: '2026-01-01T00:00:00Z',
+  last_used_at: null,
+}
+
+export const fixtureWebAuthnBeginResponse: WebAuthnBeginResponse = {
+  options: { challenge: 'fixture-challenge' },
+  challenge_token: 'fixture-challenge-token',
 }

@@ -1,10 +1,18 @@
-import { IconBell, IconChart, IconDownload, IconInfo, IconInstall, IconTag } from '@/components/icons'
+import { IconBell, IconChart, IconDownload, IconFaceId, IconInfo, IconInstall, IconTag } from '@/components/icons'
 import { Button } from '@/components/ui/Button'
 import { InstallInstructions } from './components/InstallInstructions'
 import { SettingsRow } from './components/SettingsRow'
 import type { SettingsViewProps } from './types'
 
-export default function SettingsDesktop({ displayName, username, currencyCode, version, onLogout, install }: SettingsViewProps) {
+export default function SettingsDesktop({
+  displayName,
+  username,
+  currencyCode,
+  version,
+  onLogout,
+  install,
+  showPasskeys,
+}: SettingsViewProps) {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="m-0 text-2xl font-bold">Settings</h1>
@@ -36,6 +44,7 @@ export default function SettingsDesktop({ displayName, username, currencyCode, v
               to="/settings/currencies"
               trailing={<small className="font-medium text-muted">{currencyCode ?? 'Not set'}</small>}
             />
+            {showPasskeys && <SettingsRow Icon={IconFaceId} label="Face ID & biometrics" to="/settings/passkeys" />}
             <SettingsRow Icon={IconBell} label="Notifications" />
             <SettingsRow Icon={IconDownload} label="Export data" />
             {install.show && (

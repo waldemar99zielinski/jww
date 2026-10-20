@@ -11,6 +11,8 @@ import {
   fixtureTransactions,
   fixtureUser,
   fixtureUsers,
+  fixtureWebAuthnBeginResponse,
+  fixtureWebAuthnCredential,
 } from '@/test/fixtures'
 
 /**
@@ -237,4 +239,17 @@ export const handlers = [
     const body = (await request.json()) as { attachment_ids: string[] }
     return HttpResponse.json({ data: { ...fixturePrefill, attachment_id: body.attachment_ids[0], attachment_ids: body.attachment_ids } })
   }),
+
+  http.post('*/api/v1/webauthn/credentials/register/begin', () => HttpResponse.json({ data: fixtureWebAuthnBeginResponse })),
+  http.post('*/api/v1/webauthn/credentials/register/finish', async ({ request }) => {
+    const body = (await request.json()) as { name: string }
+    return HttpResponse.json(
+      { data: { ...fixtureWebAuthnCredential, id: 'new-passkey-id', name: body.name } },
+      { status: 201 },
+    )
+  }),
+  http.get('*/api/v1/webauthn/credentials', () => HttpResponse.json({ data: [fixtureWebAuthnCredential] })),
+  http.delete('*/api/v1/webauthn/credentials/:id', () => new HttpResponse(null, { status: 204 })),
+  http.post('*/api/v1/webauthn/login/begin', () => HttpResponse.json({ data: fixtureWebAuthnBeginResponse })),
+  http.post('*/api/v1/webauthn/login/finish', () => HttpResponse.json({ data: fixtureTokenResponse })),
 ]

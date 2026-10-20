@@ -201,6 +201,11 @@ survives a short drop instead of being destroyed by an unmount. See
   cannot be prompted); a browser with no install path, or an in-app webview, shows a passive row
   that explains why instead of a dead button. See `src/hooks/useInstallPrompt.ts` and
   `src/lib/installEnvironment.ts`.
+- **iOS safe areas:** `index.html` sets `viewport-fit=cover`, so `env(safe-area-inset-*)` reports
+  the real notch/home-indicator insets. The mobile tab bar takes its height and bottom gap from
+  `--bottom-nav-height` / `--bottom-nav-bottom-gap` (`src/index.css`); the gap is half of the
+  OS-reported inset — `0` on home-button iPhones, ~17px on Face ID iPhones — so the tab row
+  clears the home bar without an oversized empty strip. `AppShell` clears the same values.
 - **Updates are silent:** `registerType: 'autoUpdate'` activates a new deploy and reloads an open
   app without asking. A reload can discard unsaved form state (e.g. a draft in `pages/add/`).
 - **Deployment prerequisites (host-side):** the production origin must serve HTTPS; serve

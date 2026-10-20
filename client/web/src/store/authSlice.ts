@@ -3,8 +3,10 @@ import { getMe, login as loginRequest } from '@/api/auth'
 import { ApiError } from '@/api/client'
 import { MOCK_USER } from '@/api/mock/data'
 import type { UserDto } from '@/api/types'
+import { loginBegin, loginFinish } from '@/api/webauthn'
 import { isDesignMode } from '@/lib/designMode'
 import { getAuthToken, setAuthToken } from '@/lib/authToken'
+import { authenticateDiscoverable } from '@/lib/webauthn'
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error'
 
@@ -56,6 +58,30 @@ export const login = createAsyncThunk<UserDto, { username: string; password: str
   },
 )
 
+/** Face ID/Touch ID login via the discoverable WebAuthn ceremony — see `lib/webauthn.ts`. */
+export const loginWithPasskey = createAsyncThunk<UserDto, void, { rejectValue: string }>(
+  'auth/loginWithPasskey',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { options, challenge_token } = await loginBegin()
+      const credential = await authenticateDiscoverable(options)
+      const { access_token } = await loginFinish(challenge_token, credential)
+      setAuthToken(access_token)
+      return await getMe()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return rejectWithValue(
+          error.status === 401 ? 'Face ID sign-in failed — try again or use your password.' : error.message,
+        )
+      }
+      // A thrown DOMException from navigator.credentials.get (the user cancelled the
+      // prompt, no platform authenticator is enrolled, etc.) is not an ApiError —
+      // never a server rejection, so there's no anti-enumeration reason to collapse it.
+      return rejectWithValue('Face ID sign-in was cancelled or is unavailable.')
+    }
+  },
+)
+
 export const logout = createAsyncThunk('auth/logout', () => {
   setAuthToken(null)
 })
@@ -92,6 +118,20 @@ const authSlice = createSlice({
         state.error = null
       })
       .addCase(login.rejected, (state, action) => {
+        state.status = 'error'
+        state.user = null
+        state.error = action.payload ?? 'Something went wrong — try again.'
+      })
+      .addCase(loginWithPasskey.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(loginWithPasskey.fulfilled, (state, action) => {
+        state.status = 'authenticated'
+        state.user = action.payload
+        state.error = null
+      })
+      .addCase(loginWithPasskey.rejected, (state, action) => {
         state.status = 'error'
         state.user = null
         state.error = action.payload ?? 'Something went wrong — try again.'

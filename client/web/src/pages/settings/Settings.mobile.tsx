@@ -1,10 +1,18 @@
-import { IconBell, IconChart, IconDownload, IconInfo, IconInstall, IconTag } from '@/components/icons'
+import { IconBell, IconChart, IconDownload, IconFaceId, IconInfo, IconInstall, IconTag } from '@/components/icons'
 import { Button } from '@/components/ui/Button'
 import { InstallInstructions } from './components/InstallInstructions'
 import { SettingsRow } from './components/SettingsRow'
 import type { SettingsViewProps } from './types'
 
-export default function SettingsMobile({ displayName, username, currencyCode, version, onLogout, install }: SettingsViewProps) {
+export default function SettingsMobile({
+  displayName,
+  username,
+  currencyCode,
+  version,
+  onLogout,
+  install,
+  showPasskeys,
+}: SettingsViewProps) {
   return (
     <div className="flex flex-col gap-5 px-4 pb-4 pt-6">
       <div className="flex items-center gap-3">
@@ -25,6 +33,7 @@ export default function SettingsMobile({ displayName, username, currencyCode, ve
           to="/settings/currencies"
           trailing={<small className="font-medium text-muted">{currencyCode ?? 'Not set'}</small>}
         />
+        {showPasskeys && <SettingsRow Icon={IconFaceId} label="Face ID & biometrics" to="/settings/passkeys" />}
         <SettingsRow Icon={IconBell} label="Notifications" />
         <SettingsRow Icon={IconDownload} label="Export data" />
         {install.show && (

@@ -1,10 +1,13 @@
-import { waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import LoginPage from '@/pages/login/LoginPage'
+import * as webauthnLib from '@/lib/webauthn'
 import { server } from '@/test/server'
 import { renderWithProviders } from '@/test/renderWithProviders'
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('LoginPage', () => {
   it('shows an error and stays unauthenticated for invalid credentials', async () => {
@@ -33,6 +36,26 @@ describe('LoginPage', () => {
     await user.type(getByLabelText('Username'), 'waldemar')
     await user.type(getByLabelText('Password'), 'correct-password')
     await user.click(getByRole('button', { name: /sign in/i }))
+
+    await waitFor(() => expect(store.getState().auth.status).toBe('authenticated'))
+    expect(store.getState().auth.user?.username).toBe('waldemar')
+  })
+
+  it('hides the Face ID button when no platform authenticator is available (the default in tests/jsdom)', async () => {
+    renderWithProviders(<LoginPage />, { route: '/login' })
+
+    expect(await screen.findByLabelText('Username')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /face id/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the Face ID button and signs in with it when a platform authenticator is available', async () => {
+    vi.spyOn(webauthnLib, 'isPlatformAuthenticatorAvailable').mockResolvedValue(true)
+    vi.spyOn(webauthnLib, 'authenticateDiscoverable').mockResolvedValue({ id: 'stub' })
+    const user = userEvent.setup()
+    const { store } = renderWithProviders(<LoginPage />, { route: '/login' })
+
+    const passkeyButton = await screen.findByRole('button', { name: /sign in with face id/i })
+    await user.click(passkeyButton)
 
     await waitFor(() => expect(store.getState().auth.status).toBe('authenticated'))
     expect(store.getState().auth.user?.username).toBe('waldemar')

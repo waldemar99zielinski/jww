@@ -1,6 +1,6 @@
 // Package kernel holds the HTTP-layer kernel every resource subpackage
 // (auth, user, currency, currency_exchange_rate, transaction_category,
-// transaction, summary) depends on: the Deps singleton and request/response
+// transaction, summary, webauthn) depends on: the Deps singleton and request/response
 // helpers. It deliberately knows nothing about any specific resource —
 // resource subpackages import this package, never the other way around, so
 // there's no import cycle. The http_server package mounts the subpackages.
@@ -40,6 +40,7 @@ type Deps struct {
 	TransactionAttachmentExtractionService *transaction_attachment_extraction.Service
 	TransactionWorkflow                    *workflow.TransactionWorkflow
 	SummaryWorkflow                        *workflow.SummaryWorkflow
+	WebAuthnWorkflow                       *workflow.WebAuthnWorkflow
 	CorsOrigins                            []string
 	// MaxBodyBytes caps every request body; <= 0 falls back to
 	// defaultMaxBodyBytes (see LimitRequestBody in middleware.go).

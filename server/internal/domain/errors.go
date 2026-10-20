@@ -83,6 +83,29 @@ func NewAuthenticationError() *AuthenticationError {
 	return &AuthenticationError{baseDomainError{kind: ErrorKindUnauthorized, message: "Invalid username, password, or token"}}
 }
 
+// WebAuthnLoginFailedError covers a failed WebAuthn login ceremony — bad or
+// expired challenge, unknown credential, bad signature, clone-counter
+// mismatch, or an infra error hit while resolving the credential. Its
+// client-facing message and Kind are deliberately identical to
+// AuthenticationError (same anti-enumeration guarantee, same 401 response),
+// but unlike AuthenticationError it preserves the real cause via Unwrap: the
+// extra failure modes a WebAuthn ceremony has over a password check are
+// operationally useful to tell apart in logs even though the client must
+// never be able to.
+type WebAuthnLoginFailedError struct {
+	baseDomainError
+	cause error
+}
+
+func NewWebAuthnLoginFailedError(cause error) *WebAuthnLoginFailedError {
+	return &WebAuthnLoginFailedError{
+		baseDomainError: baseDomainError{kind: ErrorKindUnauthorized, message: "Invalid username, password, or token"},
+		cause:           cause,
+	}
+}
+
+func (e *WebAuthnLoginFailedError) Unwrap() error { return e.cause }
+
 type CurrencyNotFoundError struct {
 	baseDomainError
 	Code string
@@ -231,6 +254,42 @@ func NewAttachmentExtractionFailedError(cause error) *AttachmentExtractionFailed
 }
 
 func (e *AttachmentExtractionFailedError) Unwrap() error { return e.cause }
+
+// WebAuthnCredentialNotFoundError covers both "no such credential" and "this
+// credential belongs to a different user" — a caller must never learn which,
+// so a delete/lookup against another user's credential 404s identically to a
+// genuinely missing one.
+type WebAuthnCredentialNotFoundError struct {
+	baseDomainError
+	CredentialID uuid.UUID
+}
+
+func NewWebAuthnCredentialNotFoundError(credentialID uuid.UUID) *WebAuthnCredentialNotFoundError {
+	return &WebAuthnCredentialNotFoundError{
+		baseDomainError: baseDomainError{kind: ErrorKindNotFound, message: fmt.Sprintf("WebAuthnCredential %s not found", credentialID)},
+		CredentialID:    credentialID,
+	}
+}
+
+// WebAuthnRegistrationFailedError means an enrollment ceremony's
+// attestation/signature could not be verified (bad challenge, expired
+// session, tampered response, ...). The caller is already authenticated
+// (password login already happened), so this is a 400, not an
+// AuthenticationError — but the message is still deliberately generic; the
+// underlying cause is available via Unwrap for boundary logging.
+type WebAuthnRegistrationFailedError struct {
+	baseDomainError
+	cause error
+}
+
+func NewWebAuthnRegistrationFailedError(cause error) *WebAuthnRegistrationFailedError {
+	return &WebAuthnRegistrationFailedError{
+		baseDomainError: baseDomainError{kind: ErrorKindValidation, message: "could not verify the new device"},
+		cause:           cause,
+	}
+}
+
+func (e *WebAuthnRegistrationFailedError) Unwrap() error { return e.cause }
 
 type TransactionSubTransactionNotFoundError struct {
 	baseDomainError

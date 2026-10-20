@@ -7,7 +7,8 @@
 ## Files
 
 - `argon2_password_hasher.go` — package doc; `Argon2PasswordHasher` + `NewArgon2PasswordHasher()`; `Hash` (random salt via `crypto/rand`, PHC string) and `Verify` (re-derive + `crypto/subtle.ConstantTimeCompare`, boolean-only).
-- `jwt/` — `Config`, shared private codec, `AccessTokenService`, and `AttachmentGrantService`, split by responsibility.
+- `jwt/` — `Config`, shared private codec, `AccessTokenService`, `AttachmentGrantService`, and `WebAuthnChallengeService`, split by responsibility.
+- `webauthn/` — wraps `github.com/go-webauthn/webauthn` into the Begin/Finish ceremony calls; see its own [README](webauthn/README.md).
 
 ## Rules
 

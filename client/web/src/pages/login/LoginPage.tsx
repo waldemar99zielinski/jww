@@ -1,18 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate, type Location } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
+import { IconFaceId } from '@/components/icons'
 import { Button } from '@/components/ui/Button'
 import { TextInput } from '@/components/ui/TextInput'
 import { useAuth } from '@/hooks/useAuth'
+import { usePlatformAuthenticator } from '@/hooks/usePlatformAuthenticator'
 
 interface LocationState {
   from?: Location
 }
 
 export default function LoginPage() {
-  const { status, error, login } = useAuth()
+  const { status, error, login, loginWithPasskey } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const platformAuthenticatorAvailable = usePlatformAuthenticator()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 
@@ -25,6 +28,15 @@ export default function LoginPage() {
     event.preventDefault()
     try {
       await login(username, password)
+      navigate('/', { replace: true })
+    } catch {
+      // Failure is already surfaced via `error` below.
+    }
+  }
+
+  async function handlePasskeyLogin() {
+    try {
+      await loginWithPasskey()
       navigate('/', { replace: true })
     } catch {
       // Failure is already surfaced via `error` below.
@@ -79,6 +91,27 @@ export default function LoginPage() {
         >
           {status === 'loading' ? 'Signing in…' : 'Sign in'}
         </Button>
+
+        {platformAuthenticatorAvailable && (
+          <>
+            <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              <span className="h-px flex-1 bg-line" />
+              or
+              <span className="h-px flex-1 bg-line" />
+            </div>
+
+            <Button
+              type="button"
+              onClick={() => void handlePasskeyLogin()}
+              disabled={status === 'loading'}
+              variant="secondary"
+              className="flex items-center justify-center gap-2 rounded-[10px] border border-line bg-surface-sunken py-3 text-[13.5px] font-semibold"
+            >
+              <IconFaceId className="h-4 w-4" />
+              Sign in with Face ID
+            </Button>
+          </>
+        )}
       </form>
     </div>
   )

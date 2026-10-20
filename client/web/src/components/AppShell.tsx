@@ -24,7 +24,7 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-paper text-ink">
       <DesignModeBadge />
-      <main className="mx-auto max-w-md pb-[calc(72px+env(safe-area-inset-bottom)+12px)] standalone:pb-[calc(88px+env(safe-area-inset-bottom)+12px)]">
+      <main className="mx-auto max-w-md pb-[calc(var(--bottom-nav-height)+var(--bottom-nav-bottom-gap)+12px)]">
         <Outlet />
       </main>
       <BottomNav />

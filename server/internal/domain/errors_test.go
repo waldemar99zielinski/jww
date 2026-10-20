@@ -25,6 +25,7 @@ func TestNotFoundErrors_KindIsNotFoundAndErrorsAsWorks(t *testing.T) {
 		{"TransactionNotFoundError", NewTransactionNotFoundError(42)},
 		{"TransactionAttachmentNotFoundError", NewTransactionAttachmentNotFoundError(uuid.New())},
 		{"TransactionSubTransactionNotFoundError", NewTransactionSubTransactionNotFoundError(uuid.New())},
+		{"WebAuthnCredentialNotFoundError", NewWebAuthnCredentialNotFoundError(uuid.New())},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,6 +79,7 @@ func TestAttachmentErrors_KindMapping(t *testing.T) {
 		{"unsupported media type", NewUnsupportedAttachmentMediaTypeError("application/pdf"), ErrorKindValidation},
 		// Provider refusal and provider outage share one kind (503).
 		{"extraction failed", NewAttachmentExtractionFailedError(errors.New("provider 500")), ErrorKindUnavailable},
+		{"webauthn registration failed", NewWebAuthnRegistrationFailedError(errors.New("bad signature")), ErrorKindValidation},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -119,4 +121,33 @@ func TestExtractionFailedError_WrapsCause(t *testing.T) {
 	assert.Equal(t, ErrorKindUnavailable, domainErr.Kind())
 	assert.NotContains(t, err.Error(), "raw provider payload")
 	assert.ErrorContains(t, errors.Unwrap(err), "429")
+}
+
+// TestWebAuthnRegistrationFailedError_WrapsCause keeps the same posture: the
+// client-facing message stays generic, while the cryptographic failure
+// reason stays inspectable for boundary logging.
+func TestWebAuthnRegistrationFailedError_WrapsCause(t *testing.T) {
+	cause := errors.New("verify signature: public key mismatch for credential abc123")
+	err := NewWebAuthnRegistrationFailedError(cause)
+
+	var domainErr DomainError
+	require.True(t, errors.As(error(err), &domainErr))
+	assert.Equal(t, ErrorKindValidation, domainErr.Kind())
+	assert.NotContains(t, err.Error(), "abc123")
+	assert.ErrorContains(t, errors.Unwrap(err), "abc123")
+}
+
+// TestWebAuthnLoginFailedError_SameFacadeAsAuthenticationErrorButWrapsCause
+// asserts the anti-enumeration property holds (same Kind/message/status as
+// AuthenticationError) while confirming, unlike AuthenticationError, the
+// real failure reason survives via Unwrap for boundary logging.
+func TestWebAuthnLoginFailedError_SameFacadeAsAuthenticationErrorButWrapsCause(t *testing.T) {
+	cause := errors.New("ceremony: clone-counter mismatch for credential abc123")
+	err := NewWebAuthnLoginFailedError(cause)
+
+	var domainErr DomainError
+	require.True(t, errors.As(error(err), &domainErr))
+	assert.Equal(t, ErrorKindUnauthorized, domainErr.Kind())
+	assert.Equal(t, NewAuthenticationError().Error(), err.Error())
+	assert.ErrorContains(t, errors.Unwrap(err), "abc123")
 }

@@ -8,10 +8,15 @@ function setOnLine(value: boolean) {
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => value })
 }
 
+function setNavigatorStandalone(value: boolean | undefined) {
+  Object.defineProperty(window.navigator, 'standalone', { configurable: true, value })
+}
+
 const originalMatchMedia = window.matchMedia
 
 afterEach(() => {
   setOnLine(true)
+  setNavigatorStandalone(undefined)
   window.matchMedia = originalMatchMedia
   vi.clearAllMocks()
 })
@@ -31,6 +36,20 @@ describe('isStandalone', () => {
     expect(isStandalone()).toBe(true)
 
     window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof window.matchMedia
+    expect(isStandalone()).toBe(false)
+  })
+
+  it('falls back to navigator.standalone when the media query misses on iOS', () => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof window.matchMedia
+    setNavigatorStandalone(true)
+
+    expect(isStandalone()).toBe(true)
+  })
+
+  it('stays false in a browser tab on any platform', () => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof window.matchMedia
+    setNavigatorStandalone(false)
+
     expect(isStandalone()).toBe(false)
   })
 })

@@ -1,10 +1,5 @@
 @import 'tailwindcss';
 
-/* `standalone:` applies only when the app runs installed (PWA/Add to Home Screen) rather than in
-   a browser tab. Used to lift the fixed bottom tab bar on iPhone, where — with no browser
-   toolbar beneath it — it would otherwise sit under the home indicator. */
-@custom-variant standalone (@media (display-mode: standalone));
-
 /* Ash & Linen — the app's single, curated theme (no light variant). Dark grey, black, white, and light beige only — no browns. */
 :root {
   --ink: #f5f5f3;
@@ -27,6 +22,12 @@
   --cat-5: #8a9388; /* rent / other */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 22px 40px -16px rgba(0, 0, 0, 0.65);
+  /* Mobile tab bar: a fixed content height plus a bottom gap. The OS reports ~34px on Face ID
+     iPhones, but the visual home bar only occupies the lower part of that zone — using half
+     keeps the tab row clear of it without an oversized empty strip. Home-button iPhones have
+     no inset, so the bar sits at the bottom edge. */
+  --bottom-nav-height: 72px;
+  --bottom-nav-bottom-gap: calc(env(safe-area-inset-bottom, 0px) * 0.5);
 }
 
 @theme inline {

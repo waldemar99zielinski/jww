@@ -8,9 +8,21 @@ export function isOnline(): boolean {
   return navigator.onLine
 }
 
-/** True when the app runs in an installed/standalone window rather than a browser tab. */
+/** iOS still exposes this non-standard flag for home-screen apps. */
+interface NavigatorWithStandalone extends Navigator {
+  standalone?: boolean
+}
+
+/**
+ * True when the app runs in an installed/standalone window rather than a browser tab.
+ * Checks both the standard media query and iOS's legacy `navigator.standalone`, which can
+ * disagree on home-screen launches.
+ */
 export function isStandalone(): boolean {
-  return window.matchMedia('(display-mode: standalone)').matches
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as NavigatorWithStandalone).standalone === true
+  )
 }
 
 /**

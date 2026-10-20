@@ -7,7 +7,7 @@
 ## Packages
 
 - [`auth/`](auth/README.md) — login + token verification.
-- [`currency/`](currency/README.md), [`currency_exchange_rate/`](currency_exchange_rate/README.md), [`transaction_category/`](transaction_category/README.md), [`transaction/`](transaction/README.md), [`transaction_attachment/`](transaction_attachment/README.md), [`user/`](user/README.md) — CRUD-style use cases.
+- [`currency/`](currency/README.md), [`currency_exchange_rate/`](currency_exchange_rate/README.md), [`transaction_category/`](transaction_category/README.md), [`transaction/`](transaction/README.md), [`transaction_attachment/`](transaction_attachment/README.md), [`user/`](user/README.md), [`webauthn_credential/`](webauthn_credential/README.md) — CRUD-style use cases.
 - [`unit_of_work/`](unit_of_work/README.md) — the persistence-agnostic transaction port.
 - [`object_storage/`](object_storage/README.md) — the persistence-agnostic blob-storage port (shared by any feature that stores files).
 - [`workflow/`](workflow/README.md) — orchestration across services; owns transaction demarcation.

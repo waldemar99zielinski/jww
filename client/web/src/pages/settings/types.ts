@@ -22,4 +22,6 @@ export interface SettingsViewProps {
   version: string
   onLogout: () => void
   install: InstallViewProps
+  /** Hides the Face ID/biometrics row when no platform authenticator is available. */
+  showPasskeys: boolean
 }

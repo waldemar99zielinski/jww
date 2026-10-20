@@ -10,6 +10,7 @@ One per resource (`auth.go`, `user.go`, `currency.go`, `currency_exchange_rate.g
 
 - `transaction.go` — `TransactionCreateRequest` gains optional `attachment_ids []uuid.UUID` (validated for duplicates/empty ids); `TransactionResponse` gains `attachments []TransactionAttachmentResponse`, always non-nil, with no `attachment_count`.
 - `transaction_attachment.go` — `TransactionAttachmentResponse` (public fields only; `transaction_id` is `*int64` and null for a draft) + `TransactionAttachmentToResponse`.
+- `webauthn.go` — `WebAuthnRegisterBeginResponse`/`WebAuthnLoginBeginResponse` (`options json.RawMessage` forwarded verbatim from the ceremony adapter + `challenge_token`; not a cryptographic key despite the name resemblance to `WebAuthnCredential.PublicKey` — it's the ceremony's options object, named for the browser API shape it feeds), `WebAuthnRegisterFinishRequest`/`WebAuthnLoginFinishRequest` (`challenge_token` + opaque `credential json.RawMessage`, parsed by the ceremony adapter, never by this package), `WebAuthnCredentialResponse` (omits `credential_id`/`public_key` — this app's own `id` is what the delete endpoint takes) + `WebAuthnCredentialToResponse`.
 
 ## Rules
 

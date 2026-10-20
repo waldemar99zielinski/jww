@@ -16,6 +16,7 @@ const BudgetsPage = lazy(() => import('@/pages/budgets'))
 const SettingsPage = lazy(() => import('@/pages/settings'))
 const SettingsCategoriesPage = lazy(() => import('@/pages/settings/categories'))
 const SettingsCurrenciesPage = lazy(() => import('@/pages/settings/currencies'))
+const SettingsPasskeysPage = lazy(() => import('@/pages/settings/passkeys'))
 
 /** Floor so BootSplash's <Logo animated /> unfold is never cut off before it's visible. */
 const MIN_BOOT_SPLASH_MS = 1000
@@ -62,6 +63,7 @@ export function App() {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/categories" element={<SettingsCategoriesPage />} />
                 <Route path="/settings/currencies" element={<SettingsCurrenciesPage />} />
+                <Route path="/settings/passkeys" element={<SettingsPasskeysPage />} />
               </Route>
             </Route>
 

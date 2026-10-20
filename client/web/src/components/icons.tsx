@@ -425,3 +425,19 @@ export function IconTrash(props: IconProps) {
     </Icon>
   )
 }
+
+/** Generic biometric glyph (Face ID on iOS, but also Touch ID/Windows Hello/... elsewhere). */
+export function IconFaceId(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7 4H5a1 1 0 0 0-1 1v2" />
+      <path d="M17 4h2a1 1 0 0 1 1 1v2" />
+      <path d="M7 20H5a1 1 0 0 1-1-1v-2" />
+      <path d="M17 20h2a1 1 0 0 0 1-1v-2" />
+      <path d="M9 10v1" />
+      <path d="M15 10v1" />
+      <path d="M9 15.5c1 1 5 1 6 0" />
+      <path d="M12 8.5v4.5h-1" />
+    </Icon>
+  )
+}

@@ -14,6 +14,7 @@ import (
 	"jww/internal/adapter/openai"
 	"jww/internal/adapter/security"
 	jwtadapter "jww/internal/adapter/security/jwt"
+	webauthnadapter "jww/internal/adapter/security/webauthn"
 	"jww/internal/adapter/storage"
 	"jww/internal/domain"
 	"jww/internal/infrastructure/database"
@@ -28,6 +29,7 @@ import (
 	"jww/internal/service/transaction_category"
 	"jww/internal/service/transaction_sub_transaction"
 	"jww/internal/service/user"
+	"jww/internal/service/webauthn_credential"
 	"jww/internal/service/workflow"
 )
 
@@ -40,6 +42,7 @@ func buildDeps(
 	ctx context.Context,
 	pool *pgxpool.Pool,
 	jwtConfig jwtadapter.Config,
+	webauthnConfig webauthnadapter.Config,
 	frankfurterConfig frankfurter.Config,
 	storageConfig storage.Config,
 	openaiConfig openai.Config,
@@ -51,6 +54,7 @@ func buildDeps(
 	passwordHasher := security.NewArgon2PasswordHasher()
 	tokenService := jwtadapter.NewAccessTokenService(jwtConfig)
 	attachmentGrantService := jwtadapter.NewAttachmentGrantService(jwtConfig, 5*time.Minute)
+	webauthnChallengeService := jwtadapter.NewWebAuthnChallengeService(jwtConfig, 5*time.Minute)
 	rateSource := frankfurter.NewClient(frankfurterConfig)
 
 	userRepo := gateway.NewPostgresUserRepository(pool)
@@ -60,8 +64,13 @@ func buildDeps(
 	transactionRepo := gateway.NewPostgresTransactionRepository(pool)
 	attachmentRepo := gateway.NewPostgresTransactionAttachmentRepository(pool)
 	subTransactionRepo := gateway.NewPostgresTransactionSubTransactionRepository(pool)
+	webauthnCredentialRepo := gateway.NewPostgresWebAuthnCredentialRepository(pool)
 
 	objectStore, err := storage.NewS3Store(ctx, storageConfig)
+	if err != nil {
+		return nil, err
+	}
+	webauthnAdapter, err := webauthnadapter.New(webauthnConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +91,7 @@ func buildDeps(
 		extractionCategorySource{categories: categoryService},
 		extractionConfig,
 	)
+	webauthnCredentialService := webauthn_credential.NewService(webauthnCredentialRepo, uowManager)
 
 	return &kernel.Deps{
 		AuthService:                            authService,
@@ -95,6 +105,7 @@ func buildDeps(
 		TransactionAttachmentExtractionService: extractionService,
 		TransactionWorkflow:                    workflow.NewTransactionWorkflow(currencyService, categoryService, userService, transactionService, attachmentService, subTransactionService, uowManager),
 		SummaryWorkflow:                        workflow.NewSummaryWorkflow(currencyService, userService, transactionService, exchangeRateService, uowManager),
+		WebAuthnWorkflow:                       workflow.NewWebAuthnWorkflow(userService, webauthnCredentialService, webauthnAdapter, webauthnChallengeService, tokenService),
 		CorsOrigins:                            corsOrigins,
 		MaxBodyBytes:                           maxBodyBytes,
 	}, nil

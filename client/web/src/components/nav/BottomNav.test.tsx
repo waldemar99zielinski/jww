@@ -22,4 +22,13 @@ describe('BottomNav', () => {
     renderWithProviders(<BottomNav />, { route: '/' })
     expect(screen.getByRole('link', { name: 'Add transaction' })).toHaveAttribute('href', '/add')
   })
+
+  it('grows by the shared safe-area gap so the tabs stay clear of the iPhone home indicator', () => {
+    renderWithProviders(<BottomNav />, { route: '/' })
+
+    const nav = screen.getByRole('navigation')
+    expect(nav).toHaveClass('h-[var(--bottom-nav-height)]')
+    expect(nav).toHaveClass('box-content')
+    expect(nav).toHaveClass('pb-[var(--bottom-nav-bottom-gap)]')
+  })
 })

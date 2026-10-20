@@ -3,11 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- `viewport-fit=cover` lets `env(safe-area-inset-*)` report the iPhone notch/home-indicator
+         insets instead of resolving to 0px. The mobile shell and bottom nav use those insets. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- Fill the OS title bar in a standalone window. Keep in sync with --paper in src/index.css. -->
     <meta name="theme-color" content="#121212" />
     <!-- Apple: the manifest link and SW are injected/handled elsewhere; these tags are manual.
-         `apple-mobile-web-app-capable` is deliberately omitted (legacy; display: standalone covers it). -->
+         `apple-mobile-web-app-capable` is legacy, but still what makes iOS expose
+         `navigator.standalone` and reliably launch an installed app standalone. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="JWW" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />

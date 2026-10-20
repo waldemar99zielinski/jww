@@ -4,6 +4,7 @@ import (
 	"jww/internal/adapter/frankfurter"
 	"jww/internal/adapter/openai"
 	jwtadapter "jww/internal/adapter/security/jwt"
+	webauthnadapter "jww/internal/adapter/security/webauthn"
 	"jww/internal/adapter/storage"
 	"jww/internal/infrastructure/database"
 	"jww/internal/infrastructure/http_server"
@@ -20,6 +21,7 @@ type Config struct {
 	Http        http_server.Config
 	Database    database.Config
 	JWT         jwtadapter.Config
+	WebAuthn    webauthnadapter.Config
 	Logger      logger.Config
 	Scheduler   scheduler.Config
 	Frankfurter frankfurter.Config
@@ -38,6 +40,10 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 	jwtConfig, err := jwtadapter.LoadConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	webauthnConfig, err := webauthnadapter.LoadConfig()
 	if err != nil {
 		return Config{}, err
 	}
@@ -69,6 +75,7 @@ func LoadConfig() (Config, error) {
 		Http:        httpConfig,
 		Database:    databaseConfig,
 		JWT:         jwtConfig,
+		WebAuthn:    webauthnConfig,
 		Logger:      loggerConfig,
 		Scheduler:   schedulerConfig,
 		Frankfurter: frankfurterConfig,

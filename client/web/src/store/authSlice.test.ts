@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MOCK_USER } from '@/api/mock/data'
 import { getAuthToken, setAuthToken } from '@/lib/authToken'
 import * as designModeModule from '@/lib/designMode'
-import { authReducer, login, logout, restoreSession } from '@/store/authSlice'
+import * as webauthnLib from '@/lib/webauthn'
+import { authReducer, login, loginWithPasskey, logout, restoreSession } from '@/store/authSlice'
 import { fixtureUser } from '@/test/fixtures'
 import { server } from '@/test/server'
 
@@ -118,6 +119,45 @@ describe('login', () => {
     const state = store.getState().auth
     expect(state.status).toBe('authenticated')
     expect(state.user).toEqual(MOCK_USER)
+  })
+})
+
+describe('loginWithPasskey', () => {
+  it('authenticates on success, same as a password login', async () => {
+    vi.spyOn(webauthnLib, 'authenticateDiscoverable').mockResolvedValue({ id: 'stub' })
+    const store = createStore()
+
+    await store.dispatch(loginWithPasskey())
+
+    const state = store.getState().auth
+    expect(state.status).toBe('authenticated')
+    expect(state.user).toEqual(fixtureUser)
+    expect(state.error).toBeNull()
+    expect(getAuthToken()).toBe('fixture-access-token')
+  })
+
+  it('surfaces a Face-ID-specific message and does not authenticate on a 401', async () => {
+    vi.spyOn(webauthnLib, 'authenticateDiscoverable').mockResolvedValue({ id: 'stub' })
+    server.use(http.post('*/api/v1/webauthn/login/finish', () => HttpResponse.json({ error: { message: 'bad creds' } }, { status: 401 })))
+    const store = createStore()
+
+    await store.dispatch(loginWithPasskey())
+
+    const state = store.getState().auth
+    expect(state.status).toBe('error')
+    expect(state.user).toBeNull()
+    expect(state.error).toBe('Face ID sign-in failed — try again or use your password.')
+  })
+
+  it('surfaces a cancellation message when the browser ceremony itself rejects (not a server error)', async () => {
+    vi.spyOn(webauthnLib, 'authenticateDiscoverable').mockRejectedValue(new Error('user cancelled'))
+    const store = createStore()
+
+    await store.dispatch(loginWithPasskey())
+
+    const state = store.getState().auth
+    expect(state.status).toBe('error')
+    expect(state.error).toBe('Face ID sign-in was cancelled or is unavailable.')
   })
 })
 
