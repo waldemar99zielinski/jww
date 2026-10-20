@@ -1,4 +1,3 @@
--- +goose Up
 -- Categories for both income and expense transactions, discriminated by `type`.
 -- A category name may repeat across types (e.g. "Gifts" is legitimately both an
 -- income category and an expense category) but not within one.
@@ -32,8 +31,3 @@ CREATE UNIQUE INDEX transaction_categories_type_name_uq ON transaction_categorie
 -- The lookup every "show me the category picker" call will make.
 CREATE INDEX transaction_categories_type_active_idx ON transaction_categories (type, active);
 
--- +goose Down
-DROP INDEX IF EXISTS transaction_categories_type_active_idx;
-DROP INDEX IF EXISTS transaction_categories_type_name_uq;
-DROP TABLE IF EXISTS transaction_categories;
-DROP TYPE IF EXISTS transaction_category_type;

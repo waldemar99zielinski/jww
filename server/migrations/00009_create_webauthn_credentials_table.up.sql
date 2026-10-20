@@ -1,8 +1,13 @@
--- +goose Up
 -- One row per registered platform-authenticator credential (Face ID, Touch
 -- ID, Windows Hello, ...) attached to an existing user (see
 -- internal/service/webauthn_credential/). A user may hold several, one per
 -- enrolled device; this table never creates a user on its own.
+--
+-- backup_eligible is the authenticator's "BE" flag at registration time
+-- (capable of being backed up/synced, e.g. true for an iCloud Keychain
+-- passkey). Per the WebAuthn spec this never changes after registration, and
+-- go-webauthn rejects every later login whose assertion doesn't report the
+-- same value the authenticator reported here.
 
 CREATE TABLE webauthn_credentials (
     id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -14,6 +19,7 @@ CREATE TABLE webauthn_credentials (
     aaguid             bytea NOT NULL,
     sign_count         bigint NOT NULL DEFAULT 0,
     transports         text[] NOT NULL DEFAULT '{}',
+    backup_eligible    boolean NOT NULL DEFAULT false,
     created_at         timestamptz NOT NULL DEFAULT now(),
     last_used_at       timestamptz,
 
@@ -22,6 +28,3 @@ CREATE TABLE webauthn_credentials (
 );
 
 CREATE INDEX webauthn_credentials_user_id_idx ON webauthn_credentials (user_id);
-
--- +goose Down
-DROP TABLE IF EXISTS webauthn_credentials;

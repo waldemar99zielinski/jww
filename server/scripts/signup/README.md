@@ -39,7 +39,7 @@ Supplying neither source for a required value fails with an error.
 
 ## Notes
 
-- Does **not** run migrations — bring the schema up first (`go run ./cmd/server`, or `goose`), so the `users` table exists.
+- Does **not** run migrations — bring the schema up first (`go run ./cmd/server`, or `go run ./cmd/migrate up`), so the `users` table exists.
 - Fails on a duplicate username (`users_username_uq`), leaving the database unchanged.
 - Reuses the server's adapters rather than issuing its own SQL, so the hashed row stays compatible with login.
 

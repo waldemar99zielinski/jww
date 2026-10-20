@@ -1,4 +1,3 @@
--- +goose Up
 -- Append-only log: "1 unit of from_currency_code was worth `rate` units of
 -- to_currency_code as of recorded_at." Never updated in place — "the rate
 -- right now" is just the latest row per pair, and "what was the rate on a
@@ -20,5 +19,3 @@ CREATE TABLE currency_exchange_rates (
     CONSTRAINT currency_exchange_rates_rate_positive CHECK (rate > 0)
 );
 
--- +goose Down
-DROP TABLE IF EXISTS currency_exchange_rates;

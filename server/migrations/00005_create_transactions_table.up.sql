@@ -1,4 +1,3 @@
--- +goose Up
 -- One table replaces separate income/expense sheets; `type` discriminates.
 -- `id` is a bigint identity, exposed by the application (domain) layer as
 -- a plain int64.
@@ -32,8 +31,3 @@ CREATE INDEX transactions_user_created_idx ON transactions (user_id, created_at)
 -- The lookup every "how much did I spend on category X" query makes.
 CREATE INDEX transactions_category_idx ON transactions (category_id);
 
--- +goose Down
-DROP INDEX IF EXISTS transactions_category_idx;
-DROP INDEX IF EXISTS transactions_user_created_idx;
-DROP TABLE IF EXISTS transactions;
-DROP TYPE IF EXISTS transaction_source;

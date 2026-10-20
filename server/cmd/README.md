@@ -1,6 +1,6 @@
 # cmd
 
-**Role.** Parent directory for executables. It contains **no `.go` files and no Go package of its own** — just `server/`.
+**Role.** Parent directory for executables. It contains **no `.go` files and no Go package of its own** — just `server/` and `migrate/`.
 
 ## Rules
 

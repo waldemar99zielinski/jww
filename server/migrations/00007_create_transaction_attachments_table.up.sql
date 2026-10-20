@@ -1,4 +1,3 @@
--- +goose Up
 -- Attachment metadata. The bytes live in private S3-compatible object
 -- storage; this table is the only authoritative mapping from an attachment
 -- (and, once linked, its transaction) to that object.
@@ -40,6 +39,3 @@ CREATE INDEX transaction_attachments_transaction_idx
     ON transaction_attachments (transaction_id, created_at, id)
     WHERE transaction_id IS NOT NULL;
 
--- +goose Down
-DROP INDEX IF EXISTS transaction_attachments_transaction_idx;
-DROP TABLE IF EXISTS transaction_attachments;

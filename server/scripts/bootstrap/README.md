@@ -41,7 +41,7 @@ Supplying neither fails with an error.
 
 ## Notes
 
-- Does **not** run migrations — bring the schema up first (`go run ./cmd/server`, or `goose`), so the `users` table exists.
+- Does **not** run migrations — bring the schema up first (`go run ./cmd/server`, or `go run ./cmd/migrate up`), so the `users` table exists.
 - **Idempotent**: an account whose username already exists is skipped, so re-running is safe.
 
 ## Testing requirement for this directory

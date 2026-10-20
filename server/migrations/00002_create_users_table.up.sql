@@ -1,4 +1,3 @@
--- +goose Up
 -- One row per household member who can log things. Authenticates with a
 -- username + password (see internal/service/auth/); display_name is separate,
 -- purely for UI.
@@ -15,5 +14,3 @@ CREATE TABLE users (
     CONSTRAINT users_username_uq UNIQUE (username)
 );
 
--- +goose Down
-DROP TABLE IF EXISTS users;
