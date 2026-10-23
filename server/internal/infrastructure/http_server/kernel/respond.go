@@ -104,6 +104,12 @@ func WriteValidationError(w http.ResponseWriter, message string, details ...Fiel
 	writeError(w, http.StatusBadRequest, CodeBadRequest, message, details)
 }
 
+// WriteServiceUnavailable writes a sanitized 503 without internal diagnostic
+// details. Callers that need diagnostics log them at the boundary instead.
+func WriteServiceUnavailable(w http.ResponseWriter) {
+	writeError(w, http.StatusServiceUnavailable, CodeServiceUnavailable, "service unavailable", nil)
+}
+
 // WriteError translates a service/domain-layer error into the standard HTTP
 // error response — the one place allowed to know both "net/http" and
 // "domain.DomainError" exist.

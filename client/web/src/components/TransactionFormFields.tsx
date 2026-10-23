@@ -61,7 +61,7 @@ export interface TransactionFormFieldsProps {
    * while edit mode always shows the date/time inputs.
    */
   dateField: ReactNode
-  /** Page-specific line-item surface (collapsible panel on Add, inline list while editing). */
+  /** Page-specific line-item surface (the shared collapsible panel on both Add and edit). */
   itemsField?: ReactNode
   /** Page-specific submit/reset controls rendered below the fields. */
   actions?: ReactNode

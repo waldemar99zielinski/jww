@@ -1,10 +1,10 @@
 import { IconClose, IconEdit, IconPaperclip, IconTrash } from '@/components/icons'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
+import { SubTransactionsPanel } from '@/components/SubTransactionsPanel'
 import { Loader } from '@/components/ui/Loader'
 import { AttachmentList } from './components/AttachmentList'
 import { DetailList } from './components/DetailList'
-import { SubTransactionSummary } from './components/SubTransactionSummary'
 import { SwipeToClose } from './components/SwipeToClose'
 import { TransactionEditForm } from './components/TransactionEditForm'
 import { TransactionHero } from './components/TransactionHero'
@@ -17,6 +17,9 @@ export default function TransactionDetailMobile({
   isIncome,
   items,
   subTransactions,
+  currencyCode,
+  subTransactionsExpanded,
+  onToggleSubTransactions,
   attachments,
   attachmentsUploading,
   attachmentUploadError,
@@ -70,7 +73,14 @@ export default function TransactionDetailMobile({
                   <>
                     <TransactionHero title={title} categoryName={categoryName} amount={amount} isIncome={isIncome} />
                     <DetailList items={items} />
-                    {subTransactions.length > 0 && <SubTransactionSummary items={subTransactions} />}
+                    {subTransactions.length > 0 && (
+                      <SubTransactionsPanel
+                        items={subTransactions}
+                        currencyCode={currencyCode}
+                        expanded={subTransactionsExpanded}
+                        onToggle={onToggleSubTransactions}
+                      />
+                    )}
                   </>
                 )}
               </div>

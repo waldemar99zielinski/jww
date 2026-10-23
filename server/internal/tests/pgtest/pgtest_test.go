@@ -21,10 +21,10 @@ func TestStart_AppliesMigrations(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close(ctx)
 
-	var version int64
-	err = pool.QueryRow(ctx, "select version_id from goose_db_version order by id desc limit 1").Scan(&version)
+	var count int
+	err = pool.QueryRow(ctx, "select count(*) from schema_migrations").Scan(&count)
 	require.NoError(t, err)
-	assert.Greater(t, version, int64(0), "expected at least one migration applied")
+	assert.Greater(t, count, 0, "expected at least one migration applied")
 }
 
 func TestBeginRollback_IsolatesWrites(t *testing.T) {

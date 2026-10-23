@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { deleteDraftAttachment, downloadDraftAttachment } from '@/api/attachments'
 import type { SubTransactionDto, TransactionPrefillDto, TransactionType } from '@/api/types'
 import { AttachmentPreview, type AttachmentPreviewItem } from '@/components/AttachmentPreview'
-import type { SubTransactionListInput } from '@/components/SubTransactionList'
-import type { TransactionFormField } from '@/components/TransactionFormFields'
 import { ResponsiveView } from '@/components/ResponsiveView'
-import { isLowConfidence } from './prefillConfidence'
-import { SubTransactionModal } from './components/SubTransactionModal'
+import { SubTransactionModal } from '@/components/SubTransactionModal'
+import type { SubTransactionInput } from '@/components/subTransactionInput'
+import type { TransactionFormField } from '@/components/TransactionFormFields'
 import { useAuth } from '@/hooks/useAuth'
 import { useCategories } from '@/hooks/useCategories'
 import { useDefaultCurrency } from '@/hooks/useDefaultCurrency'
@@ -17,6 +16,7 @@ import { useUsers } from '@/hooks/useUsers'
 import { formatShortDate, formatTime, toISODate, toISODateTime } from '@/lib/dates'
 import { amountToCents, centsToAmountDisplay, decimalStringToAmountDisplay } from '@/lib/amount'
 import { saveBlob } from '@/lib/download'
+import { isLowConfidence } from './prefillConfidence'
 import type {
   AddTransactionViewProps,
   ExtractionStatus,
@@ -465,18 +465,18 @@ export default function AddTransactionPage() {
     abortRef.current.get('extraction')?.abort()
   }
 
-  function handleAddSubTransaction(input: SubTransactionListInput) {
+  function handleAddSubTransaction(input: SubTransactionInput) {
     setSubTransactionItems((current) => [...current, { id: `item-${nextItemKeyRef.current++}`, ...input, origin: 'manual' }])
     clearLowConfidence('amount')
   }
 
-  function handleUpdateSubTransaction(id: string, input: SubTransactionListInput) {
+  function handleUpdateSubTransaction(id: string, input: SubTransactionInput) {
     setSubTransactionItems((current) => current.map((item) => (item.id === id ? { ...item, ...input } : item)))
     clearLowConfidence('amount')
     clearLowConfidenceSubTransaction(id)
   }
 
-  function handleSaveSubTransaction(input: SubTransactionListInput) {
+  function handleSaveSubTransaction(input: SubTransactionInput) {
     if (!subTransactionEditor) return
     if (subTransactionEditor.mode === 'edit') handleUpdateSubTransaction(subTransactionEditor.id, input)
     else handleAddSubTransaction(input)

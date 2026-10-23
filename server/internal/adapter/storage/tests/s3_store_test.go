@@ -52,6 +52,10 @@ func newStore(t *testing.T) *storage.S3Store {
 
 func key() string { return "objects/" + uuid.NewString() }
 
+func TestS3Store_Check(t *testing.T) {
+	require.NoError(t, newStore(t).Check(appCtx))
+}
+
 func TestS3Store_RoundTrip(t *testing.T) {
 	s := newStore(t)
 	k := key()

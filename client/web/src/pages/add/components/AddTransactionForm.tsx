@@ -1,8 +1,8 @@
 import { DateTimeFields } from '@/components/DateTimeFields'
+import { SubTransactionsPanel } from '@/components/SubTransactionsPanel'
 import { TransactionFormFields } from '@/components/TransactionFormFields'
 import { Button } from '@/components/ui/Button'
 import { DateQuickField } from './DateQuickField'
-import { SubTransactionsPanel } from './SubTransactionsPanel'
 import type { AddTransactionViewProps } from '../types'
 
 type AddTransactionFormFields = Pick<

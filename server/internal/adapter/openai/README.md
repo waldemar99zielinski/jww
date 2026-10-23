@@ -7,6 +7,7 @@
 ## Files
 
 - `openai.go` — package documentation, `Client` + `NewClient(cfg)`, and the shared vision request mechanics (`visionParams`, `structuredContent`, provider-error diagnostics). It contains no flow-specific prompt or schema.
+- `health.go` — health `Check` via the configured model endpoint.
 - `transaction_prefill.go` — the receipt extraction flow: `ExtractTransactionPrefill`, its strict schema, response DTO, and decoder. Adding another flow means adding another method/input contract here, never a prompt switch.
 - `transaction_prefill_prompt.go` — the receipt flow's complete instruction. It states every expected field and passes the user's active **expense categories** and **income categories** as separate explicit lists.
 - `config.go` — `Config{ APIKey, BaseURL, Model, TimeoutSeconds }` (`OPENAI_API_KEY` required; `OPENAI_BASE_URL` default `https://api.openai.com/v1`; `OPENAI_EXTRACTION_MODEL` default `gpt-4.1-mini`; `OPENAI_TIMEOUT_SECONDS` default `300`); `LoadConfig()`.

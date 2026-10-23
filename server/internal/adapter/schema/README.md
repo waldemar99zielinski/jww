@@ -6,7 +6,9 @@
 
 ## Files
 
-One per resource (`auth.go`, `user.go`, `currency.go`, `currency_exchange_rate.go`, `transaction.go`, `transaction_attachment.go`, `transaction_category.go`, `summary.go`) plus `date.go` (`type Date time.Time`, `"YYYY-MM-DD"` JSON + `ParseDate`) and `validate.go` (helpers `minLength`, `exactLength`, `nonNegative`, `firstError`, `noDuplicateUUIDs`, `noNilUUIDs`).
+One per resource (`auth.go`, `user.go`, `currency.go`, `currency_exchange_rate.go`, `transaction.go`, `transaction_attachment.go`, `transaction_category.go`, `summary.go`, `health.go`) plus `date.go` (`type Date time.Time`, `"YYYY-MM-DD"` JSON + `ParseDate`) and `validate.go` (helpers `minLength`, `exactLength`, `nonNegative`, `firstError`, `noDuplicateUUIDs`, `noNilUUIDs`).
+
+- `health.go` — `HealthResponse` and `ReadinessResponse`, both status-only, plus `HealthToResponse`/`ReadinessToResponse` converters from `service/health` reports. Dependency names, availability, latency, and errors are deliberately not part of the public contract; they stay in server-side warning logs.
 
 - `transaction.go` — `TransactionCreateRequest` gains optional `attachment_ids []uuid.UUID` (validated for duplicates/empty ids); `TransactionResponse` gains `attachments []TransactionAttachmentResponse`, always non-nil, with no `attachment_count`.
 - `transaction_attachment.go` — `TransactionAttachmentResponse` (public fields only; `transaction_id` is `*int64` and null for a draft) + `TransactionAttachmentToResponse`.
@@ -56,4 +58,4 @@ See [`server/TESTING.md`](../../../TESTING.md).
 - Custom validation error structs or field-error maps.
 - `time.Time` for date-only fields; `float64` for money.
 - Exposing `PasswordHash`; inconsistent JSON casing / `omitempty`.
-- Imports other than stdlib (`fmt`, `time`, `strings`), `uuid`, `domain` — no `net/http`, pgx, service, gateway, security, infrastructure.
+- Imports other than stdlib (`fmt`, `time`, `strings`), `uuid`, `domain` — no `net/http`, pgx, gateway, security, infrastructure. `health.go` is the narrow exception: it imports `service/health` solely to convert its reports.

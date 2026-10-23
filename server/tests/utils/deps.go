@@ -18,6 +18,7 @@ import (
 	"jww/internal/service/auth"
 	"jww/internal/service/currency"
 	currency_exchange_rate "jww/internal/service/currency_exchange_rate"
+	healthservice "jww/internal/service/health"
 	"jww/internal/service/object_storage"
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
@@ -163,8 +164,17 @@ func BuildTestDeps(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, st
 		extractionCategorySource{categories: categoryService},
 		transaction_attachment_extraction.Config{PublicBaseURL: "http://127.0.0.1"},
 	)
+	available := healthservice.CheckFunc(func(domain.AppContext) error { return nil })
+	healthService := healthservice.NewService(
+		healthservice.Config{LatencyWarnMS: 1000},
+		healthservice.Dependency{Name: "database", Required: true, Checker: gateway.NewPostgresHealthChecker(pool)},
+		healthservice.Dependency{Name: "openai", Checker: available},
+		healthservice.Dependency{Name: "object_storage", Checker: objectStore},
+		healthservice.Dependency{Name: "frankfurter", Checker: available},
+	)
 
 	return &kernel.Deps{
+		HealthService:                          healthService,
 		AuthService:                            authService,
 		UserService:                            userService,
 		SignupWorkflow:                         workflow.NewSignupWorkflow(userService),

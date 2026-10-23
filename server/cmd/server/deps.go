@@ -22,6 +22,7 @@ import (
 	"jww/internal/service/auth"
 	"jww/internal/service/currency"
 	"jww/internal/service/currency_exchange_rate"
+	healthservice "jww/internal/service/health"
 	"jww/internal/service/object_storage"
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
@@ -49,6 +50,7 @@ func buildDeps(
 	extractionConfig transaction_attachment_extraction.Config,
 	corsOrigins []string,
 	maxBodyBytes int64,
+	healthConfig healthservice.Config,
 ) (*kernel.Deps, error) {
 	uowManager := database.NewPostgresUnitOfWorkManager(pool)
 	passwordHasher := security.NewArgon2PasswordHasher()
@@ -56,6 +58,7 @@ func buildDeps(
 	attachmentGrantService := jwtadapter.NewAttachmentGrantService(jwtConfig, 5*time.Minute)
 	webauthnChallengeService := jwtadapter.NewWebAuthnChallengeService(jwtConfig, 5*time.Minute)
 	rateSource := frankfurter.NewClient(frankfurterConfig)
+	extractionClient := openai.NewClient(openaiConfig)
 
 	userRepo := gateway.NewPostgresUserRepository(pool)
 	currencyRepo := gateway.NewPostgresCurrencyRepository(pool)
@@ -86,14 +89,22 @@ func buildDeps(
 		WithContentNormalizer(imageprep.New())
 	subTransactionService := transaction_sub_transaction.NewService(subTransactionRepo, uowManager)
 	extractionService := transaction_attachment_extraction.NewService(
-		openai.NewClient(openaiConfig),
+		extractionClient,
 		draftAttachmentSource{attachments: attachmentService},
 		extractionCategorySource{categories: categoryService},
 		extractionConfig,
 	)
 	webauthnCredentialService := webauthn_credential.NewService(webauthnCredentialRepo, uowManager)
+	healthService := healthservice.NewService(
+		healthConfig,
+		healthservice.Dependency{Name: "database", Required: true, Checker: gateway.NewPostgresHealthChecker(pool)},
+		healthservice.Dependency{Name: "llm", Checker: extractionClient},
+		healthservice.Dependency{Name: "storage", Checker: objectStore},
+		healthservice.Dependency{Name: "currency-api", Checker: rateSource},
+	)
 
 	return &kernel.Deps{
+		HealthService:                          healthService,
 		AuthService:                            authService,
 		UserService:                            userService,
 		SignupWorkflow:                         workflow.NewSignupWorkflow(userService),

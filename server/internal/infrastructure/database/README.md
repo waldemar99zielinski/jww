@@ -7,7 +7,7 @@
 ## Files
 
 - `connection.go` (package doc) — `NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error)`: `pgxpool.New` then `Ping`; closes the pool and wraps the error if ping fails.
-- `migrate.go` — `Migrate(ctx context.Context, pool *pgxpool.Pool) error`: borrows the pool as a `database/sql` handle (`stdlib.OpenDBFromPool`), builds a goose `Provider` over the embedded `migrations.FS`, and applies pending migrations (`Provider.Up`). Called once at startup right after `NewPool`.
+- `migrate.go` — `Migrate(ctx context.Context, pool *pgxpool.Pool) error`: calls `migrator.Up` against the embedded `migrations.FS`, applying pending migrations. Called once at startup right after `NewPool`.
 - `unit_of_work.go` — `PostgresUnitOfWorkManager` + `NewPostgresUnitOfWorkManager(pool)`; `Create(ctx domain.AppContext)` begins a tx (`pool.Begin(ctx.Context())`); `PostgresUnitOfWork{ tx pgx.Tx }` implements `Finish` (commit), `Restore` (rollback), `GetValue()` (returns the raw `pgx.Tx`).
 - `config.go` — `Config{ URL string \`env:"DATABASE_URL" bind:"required"\` }`; `LoadConfig()`.
 
@@ -16,7 +16,7 @@
 - The UoW ports are defined in `internal/service/unit_of_work`; this package only implements them.
 - `Create` returns the **interface** `unit_of_work.UnitOfWork`, never the concrete type.
 - `ctx domain.AppContext` is threaded through so cancellation/context propagates.
-- `Migrate` is the only migration entry point; it runs `goose` against the embedded `migrations.FS` and shares the `goose_db_version` table with the CLI.
+- `Migrate` is the only migration entry point; it runs `internal/infrastructure/migrator` against the embedded `migrations.FS` and shares the `schema_migrations` table with `cmd/migrate`.
 
 ## How to extend
 
@@ -29,7 +29,7 @@
 
 - Leaking `pgx` types past the `GetValue() interface{}` boundary.
 - Starting transactions in handlers — services/workflows own demarcation.
-- Imports beyond pgx/stdlib, `goose`, `migrations`, `domain`, `service/unit_of_work`, `utils/{configuration,logger}`.
+- Imports beyond pgx/stdlib, `migrator`, `migrations`, `domain`, `service/unit_of_work`, `utils/{configuration,logger}`.
 
 ## Testing requirement for this directory
 

@@ -71,8 +71,35 @@ the API are both reachable through that one URL — no second tunnel, no CORS.
 npm run build
 ```
 
-Produces a static `dist/` directory — there's no server runtime to deploy. Routing uses
-`react-router-dom`'s `BrowserRouter`, so the static host must rewrite all paths to `index.html`.
+Produces a static `dist/` directory. Routing uses `react-router-dom`'s `BrowserRouter`, so a
+standalone static host must rewrite all paths to `index.html`.
+
+The repository's root `Dockerfile` builds this directory and the Go server in separate build
+stages, then copies only the compiled artifacts into one runtime image. In that image the Go
+process serves the SPA, its client-side route fallback, and `/api` on one origin.
+
+### Runtime configuration in the container
+
+Vite normally replaces `VITE_*` values while building, which would require a different image per
+environment. The combined image instead loads `/runtime-config.js` before the application bundle.
+The Go server generates that response from `WEB_API_BASE_URL` on every container start (with
+`Cache-Control: no-store`), so the same image can be promoted between environments:
+
+```sh
+docker build -t jww .
+docker run --env-file production.env -e WEB_API_BASE_URL=https://api.example.com -p 8000:8000 jww
+```
+
+Leave `WEB_API_BASE_URL` empty for the recommended same-origin deployment. `VITE_API_BASE_URL`
+remains only as a fallback for standalone static builds and Vite's local proxy. Runtime config is
+an explicit public allowlist—not a way to expose arbitrary process environment variables. Never
+put secrets in it: every value returned to the browser is visible to users.
+
+When set, `WEB_API_BASE_URL` must be a plain absolute HTTP(S) origin such as
+`https://api.example.com`; credentials, paths, queries, and fragments fail server startup. The SPA
+document is served with `Cache-Control: no-cache`, runtime config uses `no-store`, and other static
+files use Go's standard file-server behavior. The Go server also applies a restrictive CSP and
+standard browser security headers; the configured API origin is not permitted as a script source.
 
 ## Lint
 

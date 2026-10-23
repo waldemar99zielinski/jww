@@ -32,6 +32,23 @@ func newClient(baseURL string) *openai.Client {
 	})
 }
 
+func TestClient_Check(t *testing.T) {
+	var path, authorization string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		authorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"gpt-4.1-mini","object":"model","created":0,"owned_by":"test"}`))
+	}))
+	defer srv.Close()
+
+	err := newClient(srv.URL).Check(appContext())
+
+	require.NoError(t, err)
+	assert.Equal(t, "/models/gpt-4.1-mini", path)
+	assert.Equal(t, "Bearer test-api-key", authorization)
+}
+
 // wireRequest is the subset of the OpenAI Chat Completions request body these
 // tests pin: temperature 0, a single user message carrying one instruction
 // text part plus one image_url content part, and json_schema structured output.

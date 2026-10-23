@@ -12,16 +12,15 @@ items, attachment-read status) and assembles `AddTransactionViewProps`;
 - `components/` — presentational components used only by this page:
   `AddTransactionForm` (the shared field set + Add-only date/line-item/save slots, so the desktop
   and mobile variants cannot drift), `AttachmentBar` (compact upload/read/result status),
-  `SubTransactionsPanel` (collapsible line-item summary/list), `SubTransactionModal` (focused
-  add/edit dialog), `DateQuickField` — one component per file, built from `components/ui/`
-  primitives (`Button`, `IconButton`, `BottomSheet`, `TextInput`, …). Check that folder before
-  adding a new raw form element here.
-- The other Add-form building blocks are shared with the transaction detail screen's edit mode, so
-  they live in the base layer rather than here: `src/components/TransactionFormFields.tsx`,
-  `AmountHero.tsx`, `DateTimeFields.tsx`, `MoreOptionsPanel.tsx`, `categoryOptions.tsx`, and the
-  amount formatting/parsing helpers in `src/lib/amount.ts`. Line items are the deliberate exception:
-  Add uses the page-local `SubTransactionsPanel` + `SubTransactionModal` (local drafts), while
-  detail edit uses the shared inline `SubTransactionList` (per-row CRUD).
+  `DateQuickField` — one component per file, built from `components/ui/` primitives (`Button`,
+  `IconButton`, `BottomSheet`, `TextInput`, …). Check that folder before adding a new raw form
+  element here.
+- The other Add-form building blocks are shared with the transaction detail screen, so they live
+  in the base layer rather than here: `src/components/TransactionFormFields.tsx`, `AmountHero.tsx`,
+  `DateTimeFields.tsx`, `MoreOptionsPanel.tsx`, `SubTransactionsPanel.tsx`,
+  `SubTransactionModal.tsx`, `categoryOptions.tsx`, and the amount formatting/parsing helpers in
+  `src/lib/amount.ts`. Add and detail edit both use the collapsed panel + focused modal; only the
+  persistence differs (local drafts on Add, per-row CRUD on detail).
 
 ## The page in one screen
 
@@ -122,8 +121,8 @@ There are no tabs. Everything lives in one scrollable form:
   `AddTransactionViewProps` in, assert both variants render the same fields/values. This is the pair
   most likely to drift silently, per the duplication note above.
 - Component tests: `AttachmentBar` states/actions plus its details disclosure,
-  `SubTransactionsPanel` collapsed summary/mismatch/expand/row actions, and `SubTransactionModal`
-  create/edit validation. `SubTransactionList`'s shared behavior stays covered for the detail page.
+  the shared `SubTransactionsPanel` collapsed summary/mismatch/expand/row actions, and
+  `SubTransactionModal` create/edit validation (both covered under `src/components/`).
 - This page owns the **"can a user add a transaction"** Playwright flow from `TESTING.md` — that
   spec exercises the real submit → list round trip; don't duplicate its assertions here.
 

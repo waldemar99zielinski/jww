@@ -14,6 +14,7 @@
   - Keys are used **verbatim**; the client adds no namespace. Purposes scope the shared store with [`object_storage.Namespaced`](../../service/object_storage/README.md) at wiring time (e.g. transaction attachments to `transaction-attachments/`).
   - `Delete` removes the exact stored `VersionID` (a plain delete only writes a delete marker on a versioned bucket) and is idempotent when the object/version is absent.
   - `isObjectNotFound` maps `NoSuchKey`/`NotFound` to `object_storage.ErrNotFound`.
+- `health.go` — `Check` uses `HeadBucket` to verify connectivity, credentials, and bucket access without touching objects.
 
 ## Rules
 

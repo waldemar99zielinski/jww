@@ -1,19 +1,10 @@
 import type { CurrencyDto, SubTransactionDto, TransactionCategoryDto, TransactionType, UserDto } from '@/api/types'
 import type { AttachmentPreviewItem } from '@/components/AttachmentPreview'
-import type { SubTransactionListInput } from '@/components/SubTransactionList'
 
 /** One label/value pair in the detail screen's field list, already formatted for display. */
 export interface TransactionDetailItem {
   label: string
   value: string
-}
-
-/** One read-only line item, with its amount already formatted for the transaction's currency. */
-export interface TransactionDetailSubTransactionItem {
-  id: string
-  name: string
-  label: string
-  amount: string
 }
 
 /**
@@ -66,12 +57,15 @@ export interface TransactionDetailEditProps {
 
   /** The loaded transaction's line items. The edit path saves each row immediately (create/patch/delete). */
   subTransactions?: SubTransactionDto[]
-  /** A line-item mutation is in flight — the row list locks and the affected row acknowledges. */
+  /** Whether the shared line-item panel is expanded (collapsed by default, same as Add). */
+  subTransactionsExpanded: boolean
+  onToggleSubTransactions: () => void
+  /** A line-item mutation is in flight — the panel locks while the request is in flight. */
   subTransactionsBusy?: boolean
   /** Inline message when a line-item mutation failed; the row list is never optimistically changed. */
   subTransactionError?: string | null
-  onAddSubTransaction?: (input: SubTransactionListInput) => void
-  onUpdateSubTransaction?: (id: string, input: SubTransactionListInput) => void
+  onAddSubTransaction?: () => void
+  onEditSubTransaction?: (id: string) => void
   onRemoveSubTransaction?: (id: string) => void
 
   onSave: () => void
@@ -85,7 +79,13 @@ export interface TransactionDetailViewProps {
   amount: string
   isIncome: boolean
   items: TransactionDetailItem[]
-  subTransactions: TransactionDetailSubTransactionItem[]
+  /** The loaded line items, shown in the same collapsible panel the Add screen uses. */
+  subTransactions: SubTransactionDto[]
+  /** Transaction currency, used to format line-item amounts on the read-only panel. */
+  currencyCode: string
+  /** Shared line-item panel expansion (collapsed by default, exactly like Add). */
+  subTransactionsExpanded: boolean
+  onToggleSubTransactions: () => void
   attachments: TransactionAttachmentItem[]
   /** An upload is in flight; the Add attachment control shows its busy state. */
   attachmentsUploading: boolean

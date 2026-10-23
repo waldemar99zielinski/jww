@@ -68,4 +68,14 @@ describe('SubTransactionsPanel', () => {
 
     expect(props.onAdd).toHaveBeenCalledTimes(1)
   })
+
+  it('renders a read-only list when no action callbacks are supplied', () => {
+    render(<SubTransactionsPanel items={items} expanded onToggle={vi.fn()} currencyCode="EUR" />)
+
+    expect(screen.getByText('Milk 2%')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Remove / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add sub-transaction' })).not.toBeInTheDocument()
+    expect(screen.getAllByText(/12,48/).length).toBeGreaterThan(0)
+  })
 })

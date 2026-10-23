@@ -392,23 +392,29 @@ describe('TransactionDetailPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('lists line items read-only on the detail screen and mounts the editable list in edit mode', async () => {
+  it('uses the collapsible panel read-only and mounts the same panel with actions in edit mode', async () => {
     const user = userEvent.setup()
     useStatefulItemisedTransaction()
 
     renderPage('3')
     await screen.findByText('Itemised shop')
 
-    // Read-only: the persisted rows are listed, but the editing affordances are not.
-    expect(screen.getByRole('heading', { name: 'Items' })).toBeInTheDocument()
+    // Read-only: collapsed to a summary, and expanding shows the rows without edit affordances.
+    const panel = screen.getByRole('region', { name: 'Sub-transactions' })
+    expect(within(panel).getByText(/2 items/)).toBeInTheDocument()
+    expect(screen.queryByText('Milk 2%')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Expand sub-transactions' }))
     expect(screen.getByText('Milk 2%')).toBeInTheDocument()
     expect(screen.getByText('Sourdough bread')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Add item' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add sub-transaction' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /extract|prefill|re-?analy[sz]e/i })).not.toBeInTheDocument()
 
-    // …and the editable list appears once the form opens.
+    // Edit mode keeps the same expanded panel and adds its row/edit actions.
     await user.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(await screen.findByRole('button', { name: 'Add item' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Add sub-transaction' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit Milk 2%' })).toBeInTheDocument()
     expect(screen.getByText('Milk 2%')).toBeInTheDocument()
   })
 
@@ -467,9 +473,10 @@ describe('TransactionDetailPage', () => {
       expect(await screen.findByText('= sum of 2 items')).toBeInTheDocument()
       expect(screen.queryByLabelText('Amount')).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: 'Add item' }))
-      await user.type(screen.getByLabelText('New item name'), 'Coffee')
-      await user.type(screen.getByLabelText('New item amount'), '2,50')
+      await user.click(await screen.findByRole('button', { name: 'Expand sub-transactions' }))
+      await user.click(screen.getByRole('button', { name: 'Add sub-transaction' }))
+      await user.type(screen.getByLabelText('Sub-transaction name'), 'Coffee')
+      await user.type(screen.getByLabelText('Sub-transaction amount'), '2,50')
       await user.click(screen.getByRole('button', { name: 'Add item' }))
 
       await waitFor(() =>
@@ -479,7 +486,8 @@ describe('TransactionDetailPage', () => {
       // The mutation's invalidation refetches the detail query: the server's new row and Σ show up.
       expect(await screen.findByText('Coffee')).toBeInTheDocument()
       expect(screen.getByText('= sum of 3 items')).toBeInTheDocument()
-      expect(screen.getByText('14,98')).toBeInTheDocument()
+      const panel = screen.getByRole('region', { name: 'Sub-transactions' })
+      expect(within(panel).getAllByText(/14,98/).length).toBeGreaterThan(0)
       expect(state.gets).toBeGreaterThan(1)
     })
 
@@ -491,9 +499,10 @@ describe('TransactionDetailPage', () => {
       await screen.findByText('Itemised shop')
       await user.click(screen.getByRole('button', { name: 'Edit' }))
 
-      await user.click(await screen.findByRole('button', { name: 'Edit Milk 2%' }))
-      const nameInput = screen.getByLabelText('Item name for Milk 2%')
-      const amountInput = screen.getByLabelText('Item amount for Milk 2%')
+      await user.click(await screen.findByRole('button', { name: 'Expand sub-transactions' }))
+      await user.click(screen.getByRole('button', { name: 'Edit Milk 2%' }))
+      const nameInput = screen.getByLabelText('Sub-transaction name')
+      const amountInput = screen.getByLabelText('Sub-transaction amount')
       await user.clear(nameInput)
       await user.type(nameInput, 'Milk 3%')
       await user.clear(amountInput)
@@ -512,7 +521,8 @@ describe('TransactionDetailPage', () => {
 
       expect(await screen.findByText('Milk 3%')).toBeInTheDocument()
       expect(screen.getByText('= sum of 2 items')).toBeInTheDocument()
-      expect(screen.getByText('12,99')).toBeInTheDocument()
+      const panel = screen.getByRole('region', { name: 'Sub-transactions' })
+      expect(within(panel).getAllByText(/12,99/).length).toBeGreaterThan(0)
     })
 
     it('removes line items with DELETE and unlocks a last-computed Amount when the list empties', async () => {
@@ -526,7 +536,10 @@ describe('TransactionDetailPage', () => {
       // Two items → derived read-only Amount showing their Σ, plus the count note.
       expect(await screen.findByText('= sum of 2 items')).toBeInTheDocument()
       expect(screen.queryByLabelText('Amount')).not.toBeInTheDocument()
-      expect(screen.getByText('12,48')).toBeInTheDocument()
+      await user.click(await screen.findByRole('button', { name: 'Expand sub-transactions' }))
+      expect(
+        within(screen.getByRole('region', { name: 'Sub-transactions' })).getAllByText(/12,48/).length,
+      ).toBeGreaterThan(0)
 
       await user.click(screen.getByRole('button', { name: 'Remove Milk 2%' }))
 
@@ -564,6 +577,7 @@ describe('TransactionDetailPage', () => {
       renderPage('3')
       await screen.findByText('Itemised shop')
       await user.click(screen.getByRole('button', { name: 'Edit' }))
+      await user.click(await screen.findByRole('button', { name: 'Expand sub-transactions' }))
 
       await user.click(await screen.findByRole('button', { name: 'Remove Milk 2%' }))
 

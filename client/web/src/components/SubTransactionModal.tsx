@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import type { SubTransactionDto } from '@/api/types'
-import type { SubTransactionListInput } from '@/components/SubTransactionList'
 import { FieldLabel } from '@/components/ui/FieldLabel'
 import { Modal } from '@/components/ui/Modal'
 import { SignedAmountInput } from '@/components/ui/SignedAmountInput'
 import { TextInput } from '@/components/ui/TextInput'
 import { Button } from '@/components/ui/Button'
 import { amountToCents, centsToAmountDisplay } from '@/lib/amount'
+import type { SubTransactionInput } from './subTransactionInput'
 
 export interface SubTransactionModalProps {
   open: boolean
@@ -14,13 +14,14 @@ export interface SubTransactionModalProps {
   item?: SubTransactionDto
   disabled?: boolean
   onClose: () => void
-  onSave: (input: SubTransactionListInput) => void
+  onSave: (input: SubTransactionInput) => void
 }
 
 /**
- * Focused editor for one line item. Mounted with a key per row (or `new`) by the Add container, so
- * the initial values are seeded once and switching rows starts clean. Saving writes back to the
- * page's local draft; the transaction itself is only persisted from the main Save button.
+ * Focused editor for one line item, shared by the Add screen and the detail screen's edit mode.
+ * Mounted with a key per row (or `new`) by the container, so the initial values are seeded once and
+ * switching rows starts clean. Add writes back to the page's local draft; detail persists the row
+ * immediately through the sub-transaction CRUD endpoints.
  */
 export function SubTransactionModal({ open, item, disabled = false, onClose, onSave }: SubTransactionModalProps) {
   const [name, setName] = useState(item?.name ?? '')

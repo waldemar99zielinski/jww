@@ -1,5 +1,5 @@
-import { SubTransactionList } from '@/components/SubTransactionList'
 import { DateTimeFields } from '@/components/DateTimeFields'
+import { SubTransactionsPanel } from '@/components/SubTransactionsPanel'
 import { TransactionFormFields } from '@/components/TransactionFormFields'
 import { Button } from '@/components/ui/Button'
 import type { TransactionDetailEditProps } from '../types'
@@ -48,10 +48,12 @@ export function TransactionEditForm({
   moreOpen,
   onToggleMore,
   subTransactions,
+  subTransactionsExpanded,
+  onToggleSubTransactions,
   subTransactionsBusy,
   subTransactionError,
   onAddSubTransaction,
-  onUpdateSubTransaction,
+  onEditSubTransaction,
   onRemoveSubTransaction,
   canSave,
   saving,
@@ -62,17 +64,19 @@ export function TransactionEditForm({
   onCancel,
 }: TransactionEditFormProps) {
   // The line items persist per row on this screen (unlike the Add form, where they are local until
-  // save): every change goes out as a CRUD call owned by the container, so this stays pure display.
+  // save): every change goes out as a CRUD call owned by the container. The panel itself stays
+  // shared with Add — collapsed summary, expanding on click, and edits in the focused modal.
   const itemsField = (
     <div className="flex flex-col gap-2">
-      <SubTransactionList
+      <SubTransactionsPanel
         items={subTransactions ?? []}
         currencyCode={currencyCode}
-        onAdd={onAddSubTransaction ?? (() => {})}
-        onUpdate={onUpdateSubTransaction ?? (() => {})}
-        onRemove={onRemoveSubTransaction ?? (() => {})}
-        disabled={saving}
-        busy={subTransactionsBusy}
+        expanded={subTransactionsExpanded}
+        disabled={saving || subTransactionsBusy}
+        onToggle={onToggleSubTransactions}
+        onAdd={onAddSubTransaction}
+        onEdit={onEditSubTransaction}
+        onRemove={onRemoveSubTransaction}
       />
       {subTransactionError && <p className="m-0 text-[11.5px] text-critical">{subTransactionError}</p>}
     </div>

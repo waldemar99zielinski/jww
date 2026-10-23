@@ -11,7 +11,10 @@
 - [`kernel/`](kernel/README.md) — shared HTTP application plumbing: dependencies, middleware, request context, decoding, response writing, multipart handling, and HTTP error mapping. Code here may depend on domain and service types.
 - [`routers/`](routers/README.md) — resource-specific route registration and handlers. Put endpoint behavior here, grouped by resource.
 - [`utils/`](utils/README.md) — small, resource-agnostic, dependency-free HTTP utilities. These helpers may be imported by `kernel` and routers, so they must not import either of them.
-- Root package (`server.go`, `config.go`) — composition only: configure the server, middleware, CORS, and mount resource routers.
+- [`web/`](web/README.md) — optional React build config, validation, static/SPA handler, and browser
+  security middleware. It has no dependency on the parent package or API router.
+- Root package (`server.go`, `config.go`) — compose the listener, API router, optional injected web
+  handler, middleware, and top-level `/api` dispatch.
 
 When deciding where code belongs:
 
@@ -23,7 +26,11 @@ When deciding where code belongs:
 ## Files
 
 - `server.go` (package doc)
-  - `New(deps *kernel.Deps, cfg Config) *http.Server` — `{Addr: cfg.Addr(), Handler: NewRouter(deps)}` plus fixed `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout` (Slowloris protection). The attachment upload/download handlers clear the read/write deadline per request after auth.
+  - `New(deps, cfg, webCfg) (*http.Server, error)` — receives HTTP and web configuration
+    separately, builds the complete handler, and applies fixed connection timeouts.
+  - `NewHandler(deps, webCfg) (http.Handler, error)` — returns the API router in API-only mode, or
+    creates the injected, security-wrapped web handler and dispatches `/api` in
+    `newApplicationHandler`. API middleware remains owned by `NewRouter`.
   - `NewRouter(deps *kernel.Deps) http.Handler`:
     ```go
     r := chi.NewRouter()
@@ -39,7 +46,11 @@ When deciding where code belongs:
         // ... every resource
     })
     ```
-- `config.go` — `Config{ Host, Port, CorsOrigins, MaxBodyBytes }` (`HTTP_HOST`/`HTTP_PORT`/`HTTP_CORS_ORIGINS`/`HTTP_MAX_BODY_BYTES`, default 1 MiB); `Addr()`, `CorsOriginsList()`.
+- `config.go` — HTTP listener and API middleware settings only; `Addr()`, `CorsOriginsList()`.
+- `routers/health` mounts public `GET /api/v1/health` (dependency-free liveness) and `GET
+  /api/v1/readiness` (PostgreSQL is required; OpenAI, object storage, and Frankfurter are optional).
+  Readiness responses expose only `ok` or the standard sanitized `503`; unavailable or slow checks
+  are logged at WARN by `health.Service` under `service.health`.
 - `routing_verify_test.go` — table test asserting public vs protected status codes. Extend it when auth expectations change.
 - `utils/path.go` — matches route-like path patterns and extracts named path segments; see [`utils/`](utils/README.md).
 
@@ -76,5 +87,5 @@ http_server`) cover CORS and the public/protected split directly — extend
 `routing_verify_test.go` whenever a route's auth expectations change. Deeper
 middleware behavior is [`kernel`](kernel/README.md#testing-requirement-for-this-directory)'s
 test suite; per-handler behavior is each [`routers/<resource>`](routers/README.md#testing-requirement-for-this-directory)'s.
-This package itself only wires them together, so it doesn't need its own
-integration-style test beyond the two above. See `server/TESTING.md`.
+`server_handler_test.go` locks down API/web dispatch. Tests alongside the files under `web/` cover
+startup validation, static/SPA routing, and browser security policy. See `server/TESTING.md`.

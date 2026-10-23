@@ -18,3 +18,5 @@ client/ios/**/xcuserdata/
 client/ios/**/*.xcuserstate
 client/ios/.build/
 client/ios/DerivedData/
+
+.anal/

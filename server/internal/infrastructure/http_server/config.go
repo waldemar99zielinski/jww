@@ -7,7 +7,8 @@ import (
 	"jww/utils/configuration"
 )
 
-// Config is read from HTTP_HOST / HTTP_PORT / HTTP_CORS_ORIGINS / HTTP_MAX_BODY_BYTES.
+// Config controls the HTTP listener and API middleware. The optional React
+// application has its own injected web.Config.
 type Config struct {
 	Host         string `env:"HTTP_HOST" bind:"optional" default:"0.0.0.0"`
 	Port         int    `env:"HTTP_PORT" bind:"optional" default:"8000"`

@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"jww/internal/infrastructure/http_server/kernel"
+	healthservice "jww/internal/service/health"
 )
 
 func TestPublicVsProtectedRouting(t *testing.T) {
-	router := NewRouter(&kernel.Deps{})
+	router := NewRouter(&kernel.Deps{HealthService: healthservice.NewService(healthservice.Config{})})
 
 	cases := []struct {
 		name   string
@@ -18,6 +19,8 @@ func TestPublicVsProtectedRouting(t *testing.T) {
 		want   int
 	}{
 		{"login is public", http.MethodPost, "/api/v1/auth/login", http.StatusBadRequest},
+		{"health is public", http.MethodGet, "/api/v1/health", http.StatusOK},
+		{"readiness is public", http.MethodGet, "/api/v1/readiness", http.StatusOK},
 		{"summary is protected", http.MethodGet, "/api/v1/summary", http.StatusUnauthorized},
 		{"currencies protected", http.MethodGet, "/api/v1/currencies", http.StatusUnauthorized},
 		{"me is protected", http.MethodGet, "/api/v1/auth/me", http.StatusUnauthorized},

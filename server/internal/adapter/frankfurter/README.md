@@ -7,6 +7,7 @@
 ## Files
 
 - `frankfurter.go` (package doc; the main file) — `Client` + `NewClient(cfg)`; `Rates(ctx, currencies, asOf)` (the matrix orchestration) and the private single-base `rates(...)` HTTP request.
+- `health.go` — health `Check` against `/v2/currencies`.
 - `config.go` — `Config{ BaseURL, TimeoutSeconds }` (`FRANKFURTER_BASE_URL` default `https://api.frankfurter.dev`; `FRANKFURTER_TIMEOUT_SECONDS` default `15`); `LoadConfig()`.
 - `response.go` — the `rateResponse` wire DTO (`json.Number` rate) and `mapRates(...)`, which turns one base's decoded rows into flatten pairs + skips.
 

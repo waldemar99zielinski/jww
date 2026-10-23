@@ -54,7 +54,7 @@ func run() error {
 		return err
 	}
 
-	deps, err := buildDeps(ctx, pool, cfg.JWT, cfg.WebAuthn, cfg.Frankfurter, cfg.Storage, cfg.OpenAI, cfg.Extraction, cfg.Http.CorsOriginsList(), cfg.Http.MaxBodyBytes)
+	deps, err := buildDeps(ctx, pool, cfg.JWT, cfg.WebAuthn, cfg.Frankfurter, cfg.Storage, cfg.OpenAI, cfg.Extraction, cfg.Http.CorsOriginsList(), cfg.Http.MaxBodyBytes, cfg.Health)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,10 @@ func run() error {
 		return err
 	}
 
-	srv := httpserver.New(deps, cfg.Http)
+	srv, err := httpserver.New(deps, cfg.Http, cfg.Web)
+	if err != nil {
+		return fmt.Errorf("building HTTP server: %w", err)
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

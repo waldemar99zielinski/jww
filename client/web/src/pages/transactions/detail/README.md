@@ -14,23 +14,21 @@ edit form. The read-only screen also offers a confirmed **Remove transaction** a
   as an error without fetching. It also owns edit mode: the form state, the field handlers, and the
   `useUpdateTransaction` PATCH (see "Edit mode" below), plus the confirmed transaction delete.
 - `types.ts` — `TransactionDetailViewProps` (+ `TransactionDetailItem`,
-  `TransactionDetailSubTransactionItem`, `TransactionDetailEditProps`); the `items` shape keeps
-  both view variants rendering the exact same fields — the container decides *what* is shown, the
-  views only decide *how*. The `TransactionDetailEditProps` block carries the edit form's
-  values/handlers, again computed once in the container.
+  `TransactionDetailEditProps`); the `items` shape keeps both view variants rendering the exact
+  same fields — the container decides *what* is shown, the views only decide *how*. The
+  `TransactionDetailEditProps` block carries the edit form's values/handlers, again computed once
+  in the container.
 - `TransactionDetail.desktop.tsx` / `TransactionDetail.mobile.tsx` — layout variants (centered
   card vs. full-height screen with a sticky header). Both compose the same page-local components
   below, and both swap the hero + `DetailList` for `TransactionEditForm` while editing.
 - `components/TransactionHero.tsx` — category icon + name + signed amount block.
 - `components/DetailList.tsx` — the label/value definition list.
-- `components/SubTransactionSummary.tsx` — read-only line-item rows (name, optional label,
-  formatted amount) shown under the detail fields.
 - `components/DeleteTransactionAction.tsx` — the confirmation sheet for removing the whole
   transaction.
 - `components/TransactionEditForm.tsx` — the edit form. One pure-display component that wraps the
   shared `src/components/TransactionFormFields.tsx` (the same field set and desktop two-column vs.
-  mobile stacked arrangement as Add) and supplies the page-specific inline `SubTransactionList`
-  and Save/Reset actions as slots.
+  mobile stacked arrangement as Add) and supplies the shared `SubTransactionsPanel` and
+  Save/Reset actions as slots.
 - `components/AttachmentList.tsx` — attachment rows. The row itself opens the lightbox (for any
   displayable type); its trailing `⋮` button opens the actions drawer.
 - `components/AttachmentActions.tsx` — the actions drawer (`BottomSheet`): preview, download, and a
@@ -55,10 +53,11 @@ edit form. The read-only screen also offers a confirmed **Remove transaction** a
 
 ## Line items and removing the transaction
 
-- **Read-only items** — whenever `sub_transactions` has rows, the detail screen lists them under
-  **Items** with each name, optional label, and amount formatted in the transaction's currency.
-  The list is display-only here; adding, editing, and removing rows remains in edit mode's
-  `SubTransactionList`.
+- **Read-only items** — whenever `sub_transactions` has rows, the detail screen shows the shared
+  `SubTransactionsPanel`, collapsed to a count/total summary exactly like Add. Clicking it expands
+  the rows (name, optional label, amount in the transaction's currency) with no add/edit/remove
+  affordances. The container owns that expansion state, so entering edit mode keeps the panel as
+  the user left it.
 - **Remove transaction** — the button at the bottom opens `DeleteTransactionAction`, a
   `BottomSheet` confirmation whose copy states that the transaction, all of its items, and all of
   its attachments will be removed. Confirming calls `deleteTransaction()` →
@@ -141,6 +140,11 @@ currency, name, category, description, date/time, and payer (attachments keep th
 - The form markup is one page-local component (`TransactionEditForm`) shared by both view variants,
   parameterized by a `layout` prop — the same "one component, layout-only prop" shape as
   `AmountHero`'s `boxed`/`fullWidth`.
+- **Line items** use the same shared `SubTransactionsPanel` + `SubTransactionModal` as Add:
+  collapsed by default, expanding on click, and editing one row in the focused modal. The
+  difference is persistence — each add/edit/remove on this screen is immediately a
+  `POST`/`PATCH`/`DELETE` sub-transaction call owned by `index.tsx`, and a failed mutation keeps
+  the modal open (or the row unchanged) with an inline error.
 
 ## Motion & the mobile swipe (and its hard limit)
 
@@ -174,12 +178,13 @@ instantly; only our own controls and the in-app swipe get the exit transition.
   the `DELETE` call, the navigation back to the list, and the inline error when it fails.
 - `TransactionDetail.test.tsx` renders **both** view variants with identical props and asserts
   the same fields appear in each, per the desktop/mobile-divergence rule in `TESTING.md`. It also
-  covers the read-only Items list and Remove transaction button, plus edit mode: the header Edit
-  button calls `onStartEdit`, and while `isEditing` each field renders as a control with
-  Save/Reset (and no read-only list).
+  covers the collapsed read-only line-item panel, its expansion, and the Remove transaction
+  button, plus edit mode: the header Edit button calls `onStartEdit`, and while `isEditing` each
+  field renders as a control with Save/Reset.
 - `index.test.tsx` covers the edit round trip: clicking Edit, changing a field, and Save issuing a
   `PATCH` with the converted payload (display commas → whole minor units); and Reset restoring the
-  saved values.
+  saved values. Line items are exercised through the shared panel and modal: expand, add/edit in
+  the modal, remove from the row, and the resulting per-row CRUD calls/refetches.
 - `src/components/AttachmentPreview.test.tsx` covers one renderer per media type (image via inline
   URL, PDF iframe, text/video/audio via the blob loader), the unsupported fallback, the
   loader-until-loaded state, Escape/close, and the swipe-down dismiss (past threshold closes,

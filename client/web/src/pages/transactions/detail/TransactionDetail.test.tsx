@@ -52,6 +52,8 @@ const editProps: TransactionDetailEditProps = {
   onUseToday: () => {},
   onUserChange: () => {},
   onToggleMore: () => {},
+  subTransactionsExpanded: false,
+  onToggleSubTransactions: () => {},
   onSave: () => {},
   onReset: () => {},
   onCancel: () => {},
@@ -68,9 +70,12 @@ const baseProps: TransactionDetailViewProps = {
     { label: 'Date', value: '10 October 2026 · 09:30' },
   ],
   subTransactions: [
-    { id: 'sub-1', name: 'Milk 2%', label: 'dairy', amount: '6,49 zł' },
-    { id: 'sub-2', name: 'Sourdough bread', label: 'bakery', amount: '5,99 zł' },
+    { id: 'sub-1', name: 'Milk 2%', label: 'dairy', amount: 649 },
+    { id: 'sub-2', name: 'Sourdough bread', label: 'bakery', amount: 599 },
   ],
+  currencyCode: 'EUR',
+  subTransactionsExpanded: false,
+  onToggleSubTransactions: () => {},
   attachments: [imageAttachment, fileAttachment],
   attachmentsUploading: false,
   attachmentUploadError: false,
@@ -103,16 +108,30 @@ describe.each(variants)('TransactionDetail $name', ({ View }) => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
 
-  it('lists the line items and asks to remove the transaction', async () => {
+  it('collapses the line items into the shared panel until asked to expand them', async () => {
     const user = userEvent.setup()
     const onRequestDelete = vi.fn()
-    render(<View {...baseProps} onRequestDelete={onRequestDelete} />)
+    const onToggleSubTransactions = vi.fn()
+    const { rerender } = render(
+      <View {...baseProps} onRequestDelete={onRequestDelete} onToggleSubTransactions={onToggleSubTransactions} />,
+    )
 
-    expect(screen.getByRole('heading', { name: 'Items' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Sub-transactions' })).toBeInTheDocument()
+    expect(screen.getByText(/2 items/)).toBeInTheDocument()
+    expect(screen.queryByText('Milk 2%')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Expand sub-transactions' }))
+    expect(onToggleSubTransactions).toHaveBeenCalledTimes(1)
+
+    rerender(<View {...baseProps} onRequestDelete={onRequestDelete} subTransactionsExpanded />)
+
     expect(screen.getByText('Milk 2%')).toBeInTheDocument()
     expect(screen.getByText('dairy')).toBeInTheDocument()
-    expect(screen.getByText('6,49 zł')).toBeInTheDocument()
     expect(screen.getByText('Sourdough bread')).toBeInTheDocument()
+    // Read-only: no add, edit, or remove affordances.
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add sub-transaction' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Remove transaction' }))
 
@@ -171,9 +190,9 @@ describe.each(variants)('TransactionDetail $name', ({ View }) => {
     expect(screen.getByLabelText('Amount')).toHaveValue('42,50')
     expect(screen.getByRole('button', { name: /groceries/i })).toBeInTheDocument()
     expect(screen.getByLabelText('Date')).toHaveValue('2026-10-10')
-    // …and the definition list is gone.
+    // …and the read-only field list is gone, leaving the shared editable line-item panel.
     expect(screen.queryByText('10 October 2026 · 09:30')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Items' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Sub-transactions' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remove transaction' })).not.toBeInTheDocument()
 
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()

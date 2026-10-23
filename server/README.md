@@ -9,7 +9,7 @@ Backend for Joint Wallet Watch, a personal finance Telegram bot + Mini App, writ
 
 - **Router:** [chi](https://github.com/go-chi/chi) (+ `go-chi/cors`)
 - **Database:** [pgx](https://github.com/jackc/pgx) (`pgxpool`), SQL built with [Squirrel](https://github.com/Masterminds/squirrel) — no ORM
-- **Migrations:** [goose](https://github.com/pressly/goose), embedded in the binary and applied on server startup (the CLI still works for manual up/down/status)
+- **Migrations:** homegrown (`internal/infrastructure/migrator`, stdlib + pgx only, no third-party migration library), embedded in the binary and applied on server startup; `cmd/migrate` is the CLI for manual up/down/status/baseline
 - **Auth:** `golang-jwt/jwt/v5`, `golang.org/x/crypto/argon2` (Argon2id)
 - **Scheduling:** [robfig/cron/v3](https://github.com/robfig/cron) (daily exchange-rate sync; confined to `internal/infrastructure/scheduler`)
 - **Exchange rates:** [Frankfurter](https://frankfurter.dev) (no API key; the `RateSource` adapter lives in `internal/adapter/frankfurter`)
@@ -103,7 +103,9 @@ one of the two (`public.Post(...)` vs `protected.Get(...)`).
 - **Standard JSON contract**: every 2xx body is `{"data": ...}` (`kernel.WriteJSON`/`WriteOK`/`WriteCreated`, or `kernel.WriteNoContent` for 204); every non-2xx body is `{"error": {"code", "message", "details?}}` (`kernel.WriteError`/`WriteBadRequest`). `details` carries field-level validation failures.
 - **No request-validation library**: each request schema has `Validate() error`, called by hand in the handler before the service. Failures → `400 {"error": {"code": "bad_request", "message": "..."}}`.
 - **Auth**: missing/malformed `Authorization` header → `401` (via `domain.AuthenticationError`) with `WWW-Authenticate: Bearer`; `/v1/auth/login` is public, everything else is protected. New users are created out of band via [`scripts/signup`](scripts/signup/README.md) or [`scripts/bootstrap`](scripts/bootstrap/README.md).
-- **Config lives next to what it configures** (`http_server.Config`, `database.Config`, `jwt.Config`, `logger.Config`, `scheduler.Config`, `frankfurter.Config`), each loaded via `utils/configuration.Load[T]()`; `cmd/server/config.go` aggregates them.
+- **Config lives next to what it configures** (`http_server.Config`, `http_server/web.Config`,
+  `database.Config`, `jwt.Config`, `logger.Config`, `scheduler.Config`, `frankfurter.Config`), each
+  loaded by its owning package; `cmd/server/config.go` aggregates and injects them.
 - **The daily exchange-rate sync is opt-in** (`EXCHANGE_RATE_SYNC_ENABLED`, off by default). When enabled, `scheduler` fires at 00:01, `CurrencyExchangeRateWorkflow.SyncDaily` fetches the previous day's full directed matrix among every held currency from Frankfurter, and writes it in one upsert. No migration is involved — it reuses `currency_exchange_rates`. See [`internal/infrastructure/scheduler`](internal/infrastructure/scheduler/README.md) and [`internal/adapter/frankfurter`](internal/adapter/frankfurter/README.md).
 - **Error flow**: gateway returns `(nil, nil)` for absent rows → service raises a `domain.DomainError` carrying a `domain.ErrorKind` → `kernel.WriteError` maps the kind (validation→400, unauthorized→401, not found→404, conflict→409, internal/unknown→500) and writes the standard error envelope.
 - **Transaction demarcation** lives in services (`Update`/`Delete`) and workflows (multi-service ops), never in handlers.
@@ -127,23 +129,63 @@ air
 
 `server/.air.toml` rebuilds on `.go` changes, rebuilds on `.sql` changes (migrations are embedded at build time), and restarts on `.env` edits. Air sends `SIGINT` on rebuild so the server shuts down gracefully.
 
+## Combined Docker image
+
+From the repository root, build one image containing the Go binary and production Vite assets:
+
+```bash
+docker build -t jww .
+```
+
+`WEB_STATIC_DIR` enables SPA serving (the image sets it to `/app/web`). Requests under `/api`
+continue to use the API router; existing files are served directly; browser navigations fall back
+to `index.html`. Startup fails if the directory or entrypoint is missing, preventing an API-healthy
+but UI-broken deployment. Static files use Go's standard file-server behavior; the SPA document is
+served with `Cache-Control: no-cache` and runtime configuration uses `no-store`. A focused security
+middleware adds CSP, MIME and framing protections, referrer/device policy, opener isolation, and
+HSTS without adding custom compression or asset-cache machinery.
+
+`WEB_API_BASE_URL` is exposed to the browser by `/runtime-config.js` at container runtime. Leave it
+empty for same-origin API calls. A non-empty value must be an absolute HTTP(S) origin with no path,
+credentials, query, or fragment. It is deliberately an allowlisted public value—server secrets are
+never copied into client config. The same origin is narrowly included in CSP for API calls and
+attachment media, but not as a script source.
+
+The server exposes `GET /api/v1/health` as its public process-liveness endpoint. It returns `200`
+with `{"data":{"status":"ok"}}` without checking dependencies. `GET /api/v1/readiness` checks the
+dependencies and returns only `{"data":{"status":"ok"}}` or a sanitized `503`; PostgreSQL is the
+only hard requirement. Dependency details stay server-side, with WARN logs for unavailable
+services or checks at/above `READINESS_LATENCY_WARN_MS` (default 1000ms). Both the image and Compose
+probe readiness.
+
+For a local production-shaped stack, including Postgres and MinIO:
+
+```bash
+docker compose -f development/docker-compose.yml up --build
+```
+
+Then open `http://localhost:8000`. Deployment-specific values belong in the container environment
+or Compose `.env`, not in Docker build arguments.
+
 ## Running migrations
 
 Migrations are embedded in the binary (`migrations/embed.go`) and applied automatically on startup:
 `run()` calls `database.Migrate(ctx, pool)` right after opening the pool, so `go run ./cmd/server`
-brings the schema up to date before the first request is served. Versions are tracked in the same
-`goose_db_version` table the CLI uses, so both paths stay in sync.
+brings the schema up to date before the first request is served. Versions and a checksum per version
+are tracked in the same `schema_migrations` table the CLI uses, so both paths stay in sync — see
+`internal/infrastructure/migrator/README.md`.
 
-For manual control (status, rollback, creating a new file) use the goose CLI:
+For manual control (status, rollback) use `cmd/migrate`:
 
 ```bash
-go install github.com/pressly/goose/v3/cmd/goose@latest
-export GOOSE_DRIVER=postgres
-export GOOSE_DBSTRING="$DATABASE_URL"
-goose -dir migrations up
-goose -dir migrations status
-goose -dir migrations down   # undo the most recent migration
+export DATABASE_URL=postgres://...
+go run ./cmd/migrate up
+go run ./cmd/migrate status
+go run ./cmd/migrate down   # undo the most recent migration
 ```
+
+See `migrations/README.md` for the file format and the one-time `baseline` step needed when cutting an
+existing database over to this tool.
 
 ## Tests
 

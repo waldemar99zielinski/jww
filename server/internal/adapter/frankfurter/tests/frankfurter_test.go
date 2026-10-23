@@ -26,6 +26,20 @@ func newClient(serverURL string) *frankfurter.Client {
 	return frankfurter.NewClient(frankfurter.Config{BaseURL: serverURL, TimeoutSeconds: 5})
 }
 
+func TestClient_Check(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	err := newClient(srv.URL).Check(appContext())
+
+	require.NoError(t, err)
+	assert.Equal(t, "/v2/currencies", path)
+}
+
 // rateRow mirrors one element of the /v2/rates array so tests can build
 // responses without hand-writing JSON. Rate is written verbatim as a bare JSON
 // number (never quoted), matching the API.

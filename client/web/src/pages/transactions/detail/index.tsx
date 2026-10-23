@@ -4,8 +4,9 @@ import { attachmentPreviewUrl, downloadTransactionAttachment } from '@/api/attac
 import type { TransactionDetailsDto, TransactionSource, TransactionType } from '@/api/types'
 import { AttachmentPreview } from '@/components/AttachmentPreview'
 import { ResponsiveView } from '@/components/ResponsiveView'
+import { SubTransactionModal } from '@/components/SubTransactionModal'
 import { TransactionAttachmentPicker } from '@/components/TransactionAttachmentPicker'
-import type { SubTransactionListInput } from '@/components/SubTransactionList'
+import type { SubTransactionInput } from '@/components/subTransactionInput'
 import { useDeleteTransactionAttachment, useUploadTransactionAttachment } from '@/hooks/useAttachments'
 import { useCategories } from '@/hooks/useCategories'
 import { useDefaultCurrency } from '@/hooks/useDefaultCurrency'
@@ -13,7 +14,7 @@ import { useCreateSubTransaction, useDeleteSubTransaction, useUpdateSubTransacti
 import { useDeleteTransaction, useTransaction, useUpdateTransaction } from '@/hooks/useTransactions'
 import { useUsers } from '@/hooks/useUsers'
 import { amountToCents, centsToAmountDisplay, decimalStringToAmountDisplay } from '@/lib/amount'
-import { formatAmount, formatSignedAmount } from '@/lib/currency'
+import { formatSignedAmount } from '@/lib/currency'
 import { formatTime, toISODateTime, toLocalISODate } from '@/lib/dates'
 import { saveBlob } from '@/lib/download'
 import { previewKindFor } from '@/lib/previewKind'
@@ -99,6 +100,12 @@ export default function TransactionDetailPage() {
   const updateSubTransaction = useUpdateSubTransaction()
   const deleteSubTransaction = useDeleteSubTransaction()
   const [subTransactionError, setSubTransactionError] = useState<string | null>(null)
+  // The line-item panel mirrors Add: collapsed by default and expandable on click. The focused
+  // modal edits one row at a time, seeded by `subTransactionEditor`.
+  const [subTransactionsExpanded, setSubTransactionsExpanded] = useState(false)
+  const [subTransactionEditor, setSubTransactionEditor] = useState<
+    { mode: 'create' } | { mode: 'edit'; id: string } | null
+  >(null)
 
   // Only fetched once the form is actually open — the read-only screen needs neither.
   const categoriesQuery = useCategories(type, true, editing)
@@ -141,16 +148,6 @@ export default function TransactionDetailPage() {
   // mutation simply leaves the row unchanged.
   const subTransactions = transaction?.sub_transactions ?? []
   const hasSubTransactions = subTransactions.length > 0
-  const subTransactionItems = useMemo(
-    () =>
-      (transaction?.sub_transactions ?? []).map((item) => ({
-        id: item.id,
-        name: item.name,
-        label: item.label,
-        amount: formatAmount(item.amount / 100, transaction?.currency_code),
-      })),
-    [transaction?.sub_transactions, transaction?.currency_code],
-  )
   const subTransactionsBusy =
     createSubTransaction.isPending || updateSubTransaction.isPending || deleteSubTransaction.isPending
 
@@ -171,24 +168,28 @@ export default function TransactionDetailPage() {
   }, [editing, transaction, hasSubTransactions])
 
   /** Adds one item: POST, then refetch so the parent's recomputed amount is what the screen shows. */
-  async function handleAddSubTransaction(input: SubTransactionListInput) {
-    if (!transaction) return
+  async function handleAddSubTransaction(input: SubTransactionInput): Promise<boolean> {
+    if (!transaction) return false
     setSubTransactionError(null)
     try {
       await createSubTransaction.mutateAsync({ transactionId: transaction.id, input })
+      return true
     } catch {
       setSubTransactionError("Couldn't add that item — try again.")
+      return false
     }
   }
 
   /** Edits one item: PATCH. On failure the row keeps its previous values and an error shows. */
-  async function handleUpdateSubTransaction(id: string, input: SubTransactionListInput) {
-    if (!transaction) return
+  async function handleUpdateSubTransaction(id: string, input: SubTransactionInput): Promise<boolean> {
+    if (!transaction) return false
     setSubTransactionError(null)
     try {
       await updateSubTransaction.mutateAsync({ transactionId: transaction.id, subTransactionId: id, input })
+      return true
     } catch {
       setSubTransactionError("Couldn't save that item — try again.")
+      return false
     }
   }
 
@@ -202,6 +203,30 @@ export default function TransactionDetailPage() {
       setSubTransactionError("Couldn't remove that item — try again.")
     }
   }
+
+  function handleOpenAddSubTransaction() {
+    setSubTransactionsExpanded(true)
+    setSubTransactionEditor({ mode: 'create' })
+  }
+
+  function handleOpenEditSubTransaction(id: string) {
+    setSubTransactionEditor({ mode: 'edit', id })
+  }
+
+  /** Saves the modal's values through the matching CRUD call; the modal stays open on failure. */
+  async function handleSaveSubTransaction(input: SubTransactionInput) {
+    if (!subTransactionEditor) return
+    const saved =
+      subTransactionEditor.mode === 'edit'
+        ? await handleUpdateSubTransaction(subTransactionEditor.id, input)
+        : await handleAddSubTransaction(input)
+    if (saved) setSubTransactionEditor(null)
+  }
+
+  const editingSubTransaction =
+    subTransactionEditor?.mode === 'edit'
+      ? subTransactions.find((item) => item.id === subTransactionEditor.id)
+      : undefined
 
   async function handleDownload(attachment: TransactionAttachmentItem) {
     if (!transaction) return
@@ -310,6 +335,7 @@ export default function TransactionDetailPage() {
   /** Leave edit mode without changing anything (the button reads "Cancel" while the form is clean). */
   function handleCancel() {
     updateTransaction.reset()
+    setSubTransactionEditor(null)
     setEditing(false)
   }
 
@@ -414,10 +440,12 @@ export default function TransactionDetailPage() {
     onUserChange: setUserOverride,
     onToggleMore: () => setMoreOpen((v) => !v),
     subTransactions,
+    subTransactionsExpanded,
+    onToggleSubTransactions: () => setSubTransactionsExpanded((value) => !value),
     subTransactionsBusy,
     subTransactionError,
-    onAddSubTransaction: handleAddSubTransaction,
-    onUpdateSubTransaction: handleUpdateSubTransaction,
+    onAddSubTransaction: handleOpenAddSubTransaction,
+    onEditSubTransaction: handleOpenEditSubTransaction,
     onRemoveSubTransaction: handleRemoveSubTransaction,
     onSave: handleSave,
     onReset: handleReset,
@@ -432,7 +460,10 @@ export default function TransactionDetailPage() {
       : '',
     isIncome: transaction?.type === 'income',
     items,
-    subTransactions: subTransactionItems,
+    subTransactions,
+    currencyCode: transaction?.currency_code ?? '',
+    subTransactionsExpanded,
+    onToggleSubTransactions: () => setSubTransactionsExpanded((value) => !value),
     attachments,
     attachmentsUploading: attachmentUploadsInFlight > 0,
     attachmentUploadError,
@@ -494,6 +525,16 @@ export default function TransactionDetailPage() {
           onDownload={handleDownload}
           loadBlob={(attachmentId) => downloadTransactionAttachment(transaction.id, attachmentId)}
           onClose={() => setPreviewAttachment(null)}
+        />
+      )}
+      {(subTransactionEditor?.mode === 'create' || editingSubTransaction) && (
+        <SubTransactionModal
+          key={subTransactionEditor?.mode === 'edit' ? subTransactionEditor.id : 'new'}
+          open
+          item={editingSubTransaction}
+          disabled={subTransactionsBusy}
+          onClose={() => setSubTransactionEditor(null)}
+          onSave={handleSaveSubTransaction}
         />
       )}
     </>

@@ -64,16 +64,19 @@ here instead of copying it.
     need (type, amount/currency, name, category, description, date and payer) with a `layout` prop
     for the desktop two-column vs. mobile stacked arrangement. Page-specific pieces stay slots:
     Add supplies its date shortcut, line-item panel and save button; detail edit supplies the
-    always-open date fields, inline line-item list and Save/Reset actions. It also accepts an
+    always-open date fields, the same line-item panel and Save/Reset actions. It also accepts an
     optional `lowConfidenceFields` set; only Add passes it, to draw the red review outline on
     extracted values below the confidence threshold.
-  - `SubTransactionList.tsx` — the editable line-item list (name/label/amount per row, inline
-    edit + remove, "+ Add item", running total) used by the detail screen's edit mode, where each
-    change is a sub-transaction CRUD call. Pure display: `items` + `onAdd`/`onUpdate`/`onRemove`
-    props, with `disabled`/`busy` flags for the saving state; amounts follow the same
-    comma-display-string ↔ cents convention as `AmountHero`. The Add screen deliberately keeps its
-    collapsed `SubTransactionsPanel` + focused `SubTransactionModal` (local drafts that only persist
-    with the transaction); both surfaces share those amount conventions.
+  - `SubTransactionsPanel.tsx` — the collapsible line-item panel shared by Add, the detail screen's
+    read-only view, and the detail edit form. Collapsed, it summarizes the count and total (plus an
+    attachment-total mismatch warning); expanding reveals the rows. Pure display: `items`,
+    `expanded`, `onToggle` plus optional `onAdd`/`onEdit`/`onRemove` callbacks — omit the callbacks
+    for a read-only list.
+  - `SubTransactionModal.tsx` — the focused create/edit dialog for one line item (name, optional
+    label, signed amount), opened from the panel's row or Add action. The parent owns the draft
+    (Add) or persists the row immediately (detail edit).
+  - `subTransactionInput.ts` — the `SubTransactionInput` shape (name/label/amount in whole cents)
+    shared by the panel's modal, Add's local drafts, and detail's CRUD callbacks.
   - `icons.tsx` — **the one exception** to one-component-per-file: a hand-drawn SVG icon set
     behind a single shared `Icon` wrapper. Splitting 24+ one-line icon components into 24+ files
     would hurt navigability more than it helps — add new icons here, don't inline SVG elsewhere.

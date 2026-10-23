@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { cx } from '@/components/ui/classes'
 import { centsToAmountDisplay } from '@/lib/amount'
+import { formatAmount } from '@/lib/currency'
 
 export interface SubTransactionsPanelProps {
   items: SubTransactionDto[]
@@ -13,17 +14,24 @@ export interface SubTransactionsPanelProps {
   /** Extracted rows scored below the confidence threshold, outlined for review. */
   lowConfidenceIds?: ReadonlySet<string>
   disabled?: boolean
+  /** Formats the amounts; omit for the bare comma display used before a transaction exists. */
+  currencyCode?: string
   onToggle: () => void
-  onAdd: () => void
-  onEdit: (id: string) => void
-  onRemove: (id: string) => void
+  /** Omit the action callbacks for a read-only panel (e.g. the detail screen's display mode). */
+  onAdd?: () => void
+  onEdit?: (id: string) => void
+  onRemove?: (id: string) => void
 }
 
 /**
- * Collapsible line-item panel. Collapsed, it is a one-line summary (count, total and an attachment-
- * total mismatch warning); expanding reveals the rows. Each row opens the focused edit modal, and
- * its trash button removes it. Keeping the default collapsed means a scanned attachment can fill a
+ * Collapsible line-item panel shared by the Add screen, the detail screen's read-only view, and
+ * the detail edit form. Collapsed, it is a one-line summary (count, total and an attachment-total
+ * mismatch warning); expanding reveals the rows. Each row opens the focused edit modal, and its
+ * trash button removes it. Keeping the default collapsed means a scanned attachment can fill a
  * form without pushing every line item into the main layout.
+ *
+ * Pure display: the parent owns the expansion state and every action. Passing no action callbacks
+ * turns it into a read-only list — useful on the detail screen outside edit mode.
  */
 export function SubTransactionsPanel({
   items,
@@ -31,6 +39,7 @@ export function SubTransactionsPanel({
   expanded,
   lowConfidenceIds,
   disabled = false,
+  currencyCode,
   onToggle,
   onAdd,
   onEdit,
@@ -42,6 +51,8 @@ export function SubTransactionsPanel({
     attachmentTotalCents === undefined || items.length === 0 ? 0 : attachmentTotalCents - totalCents
   const hasMismatch = differenceCents !== 0
   const count = items.length
+  const displayAmount = (cents: number) =>
+    currencyCode ? formatAmount(cents / 100, currencyCode) : centsToAmountDisplay(cents)
 
   return (
     <section className="flex flex-col rounded-2xl border border-line bg-surface" aria-label="Sub-transactions">
@@ -59,12 +70,12 @@ export function SubTransactionsPanel({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="text-sm font-bold text-ink">Sub-transactions</span>
             <span className={cx('text-xs', hasMismatch ? 'text-critical' : 'text-muted')}>
-              {count === 0 ? 'No sub-transactions' : `${count} ${count === 1 ? 'item' : 'items'} · ${displayTotal(totalCents)}`}
+              {count === 0 ? 'No sub-transactions' : `${count} ${count === 1 ? 'item' : 'items'} · ${displayAmount(totalCents)}`}
             </span>
             {hasMismatch && (
               <span className="text-[11px] text-critical">
-                Attachment total {centsToAmountDisplay(attachmentTotalCents!)} · difference{' '}
-                {centsToAmountDisplay(Math.abs(differenceCents))}
+                Attachment total {displayAmount(attachmentTotalCents!)} · difference{' '}
+                {displayAmount(Math.abs(differenceCents))}
               </span>
             )}
           </span>
@@ -76,7 +87,7 @@ export function SubTransactionsPanel({
           />
         </button>
 
-        {count === 0 && !expanded && (
+        {onAdd && count === 0 && !expanded && (
           <Button
             variant="secondary"
             onClick={onAdd}
@@ -97,35 +108,47 @@ export function SubTransactionsPanel({
             <ul className="m-0 flex list-none flex-col p-0">
               {items.map((item) => {
                 const lowConfidence = lowConfidenceIds?.has(item.id) ?? false
-                return (
-                <li key={item.id} className="flex items-center gap-1 border-t border-line/60 first:border-t-0">
-                  <button
-                    type="button"
-                    onClick={() => onEdit(item.id)}
-                    disabled={disabled}
-                    aria-label={`Edit ${item.name}`}
-                    aria-invalid={lowConfidence || undefined}
-                    className={cx(
-                      'flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-1 py-2.5 text-left disabled:cursor-default',
-                      lowConfidence && 'ring-2 ring-critical',
-                    )}
-                  >
+                const row = (
+                  <>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[13px] font-semibold text-ink">{item.name}</span>
                       {item.label && <span className="truncate text-[11px] text-muted">{item.label}</span>}
                     </span>
                     <span className="flex-none font-mono text-[12.5px] tabular-nums text-ink-soft">
-                      {centsToAmountDisplay(item.amount)}
+                      {displayAmount(item.amount)}
                     </span>
-                  </button>
-                  <IconButton
-                    aria-label={`Remove ${item.name}`}
-                    onClick={() => onRemove(item.id)}
-                    disabled={disabled}
-                    icon={<IconTrash className="h-3.5 w-3.5" />}
-                    className="h-8 w-8 flex-none text-critical"
-                  />
-                </li>
+                  </>
+                )
+
+                return (
+                  <li key={item.id} className="flex items-center gap-1 border-t border-line/60 first:border-t-0">
+                    {onEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(item.id)}
+                        disabled={disabled}
+                        aria-label={`Edit ${item.name}`}
+                        aria-invalid={lowConfidence || undefined}
+                        className={cx(
+                          'flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-1 py-2.5 text-left disabled:cursor-default',
+                          lowConfidence && 'ring-2 ring-critical',
+                        )}
+                      >
+                        {row}
+                      </button>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 items-center gap-3 px-1 py-2.5">{row}</div>
+                    )}
+                    {onRemove && (
+                      <IconButton
+                        aria-label={`Remove ${item.name}`}
+                        onClick={() => onRemove(item.id)}
+                        disabled={disabled}
+                        icon={<IconTrash className="h-3.5 w-3.5" />}
+                        className="h-8 w-8 flex-none text-critical"
+                      />
+                    )}
+                  </li>
                 )
               })}
             </ul>
@@ -134,26 +157,24 @@ export function SubTransactionsPanel({
           <div className="flex items-baseline justify-between gap-3 border-t border-line px-1 pt-2">
             <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Total</span>
             <span className="font-mono text-[13px] font-semibold tabular-nums text-ink">
-              {displayTotal(totalCents)}
+              {displayAmount(totalCents)}
             </span>
           </div>
 
-          <Button
-            variant="secondary"
-            onClick={onAdd}
-            disabled={disabled}
-            aria-label="Add sub-transaction"
-            className="flex items-center justify-center gap-1.5 py-2.5"
-          >
-            <IconPlus className="h-3.5 w-3.5" />
-            Add item
-          </Button>
+          {onAdd && (
+            <Button
+              variant="secondary"
+              onClick={onAdd}
+              disabled={disabled}
+              aria-label="Add sub-transaction"
+              className="flex items-center justify-center gap-1.5 py-2.5"
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+              Add item
+            </Button>
+          )}
         </div>
       )}
     </section>
   )
-}
-
-function displayTotal(cents: number): string {
-  return centsToAmountDisplay(cents)
 }

@@ -9,6 +9,7 @@ package kernel
 import (
 	"jww/internal/service/auth"
 	"jww/internal/service/currency"
+	"jww/internal/service/health"
 	"jww/internal/service/transaction"
 	"jww/internal/service/transaction_attachment"
 	transaction_attachment_extraction "jww/internal/service/transaction_attachment_extraction"
@@ -29,6 +30,7 @@ var httpLog = logger.New().WithComponent("http_server")
 // anything per request anymore; all business logic, including transaction
 // demarcation, lives in the service layer these were built from.
 type Deps struct {
+	HealthService                          *health.Service
 	AuthService                            *auth.Service
 	UserService                            *user.Service
 	SignupWorkflow                         *workflow.SignupWorkflow
@@ -42,7 +44,5 @@ type Deps struct {
 	SummaryWorkflow                        *workflow.SummaryWorkflow
 	WebAuthnWorkflow                       *workflow.WebAuthnWorkflow
 	CorsOrigins                            []string
-	// MaxBodyBytes caps every request body; <= 0 falls back to
-	// defaultMaxBodyBytes (see LimitRequestBody in middleware.go).
-	MaxBodyBytes int64
+	MaxBodyBytes                           int64
 }

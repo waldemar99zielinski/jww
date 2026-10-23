@@ -9,3 +9,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface Window {
+  __JWW_CONFIG__?: {
+    apiBaseUrl?: string
+  }
+}

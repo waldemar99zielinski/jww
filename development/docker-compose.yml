@@ -56,6 +56,52 @@ services:
       echo 'minio bucket ready';
       "
 
+  # Production-shaped application container: the Go process serves both the
+  # API and the Vite build. All configuration below is read at container
+  # startup; no deployment URL or secret is baked into the image.
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-finance}:${POSTGRES_PASSWORD:-finance}@postgres:5432/${POSTGRES_DB:-finance}?sslmode=disable
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 8000
+      HTTP_CORS_ORIGINS: ${HTTP_CORS_ORIGINS:-*}
+      READINESS_LATENCY_WARN_MS: ${READINESS_LATENCY_WARN_MS:-1000}
+      WEB_STATIC_DIR: /app/web
+      # Empty means same-origin /api. Set an absolute HTTP(S) origin (without a
+      # path) to point this image at a separately hosted API.
+      WEB_API_BASE_URL: ${WEB_API_BASE_URL:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_RP_DISPLAY_NAME: ${WEBAUTHN_RP_DISPLAY_NAME:-Joint Wallet Watch}
+      WEBAUTHN_RP_ORIGINS: ${WEBAUTHN_RP_ORIGINS:-http://localhost:8000}
+      OBJECT_STORAGE_S3_BUCKET: jww
+      OBJECT_STORAGE_S3_REGION: us-east-1
+      OBJECT_STORAGE_S3_ENDPOINT: http://minio:9000
+      OBJECT_STORAGE_S3_FORCE_PATH_STYLE: "true"
+      OBJECT_STORAGE_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-jww}
+      OBJECT_STORAGE_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-jww-development}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-development-only}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/v1/readiness"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
 volumes:
   pgsql-data:
   minio-data:

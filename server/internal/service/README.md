@@ -8,6 +8,7 @@
 
 - [`auth/`](auth/README.md) — login + token verification.
 - [`currency/`](currency/README.md), [`currency_exchange_rate/`](currency_exchange_rate/README.md), [`transaction_category/`](transaction_category/README.md), [`transaction/`](transaction/README.md), [`transaction_attachment/`](transaction_attachment/README.md), [`user/`](user/README.md), [`webauthn_credential/`](webauthn_credential/README.md) — CRUD-style use cases.
+- [`health/`](health/README.md) — concurrent required/optional dependency health aggregation for readiness.
 - [`unit_of_work/`](unit_of_work/README.md) — the persistence-agnostic transaction port.
 - [`object_storage/`](object_storage/README.md) — the persistence-agnostic blob-storage port (shared by any feature that stores files).
 - [`workflow/`](workflow/README.md) — orchestration across services; owns transaction demarcation.
@@ -15,8 +16,8 @@
 ## Imports
 
 - A resource service may import **only** `internal/domain` + `internal/service/unit_of_work` (+ stdlib, `uuid`, `time`).
-- **Forbidden:** other service packages, `adapter/*`, `infrastructure/*`, pgx, `net/http`, `utils/logger`. Composing services is the job of `workflow/`.
-- **Services never log.** Return a typed error (see `domain`'s `DomainError`); the HTTP/CLI boundary that called you already logs with full request/process context. See `utils/logger`'s "Where to log".
+- **Forbidden:** other service packages, `adapter/*`, `infrastructure/*`, pgx, `net/http`. Composing services is the job of `workflow/`.
+- **Services never log**, with one documented exception: `service/health` owns dependency readiness diagnostics and imports `utils/logger` to WARN on unavailable/slow checks. Otherwise return a typed error (see `domain`'s `DomainError`); the HTTP/CLI boundary that called you already logs with full request/process context. See `utils/logger`'s "Where to log".
 
 ## Shared conventions
 

@@ -9,6 +9,7 @@
 - `db.go` — `DBTX` interface (the subset shared by `*pgxpool.Pool` and `pgx.Tx`); package-wide `var psql = newStatementBuilder()`; `dbFromUnitOfWork(defaultDB, uow...)` selects the active tx or the default handle (errors if >1 uow).
 - `squirrel.go` — `newStatementBuilder()` → `PlaceholderFormat(squirrel.Dollar)` (write `?`, it emits `$N`).
 - `numeric.go` — carries the package doc; `moneyToNumeric`/`numericToMoney`, `exchangeRateToNumeric`/`numericToExchangeRate` always round-trip through the domain type's **text** form, never `float64`.
+- `health.go` — `PostgresHealthChecker` + `NewPostgresHealthChecker(pool)` implements `health.Checker` with `pgxpool.Pool.Ping`; readiness wiring uses this adapter instead of reaching into the pool directly.
 
 ## Rules
 
