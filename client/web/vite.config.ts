@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -7,6 +8,14 @@ import { configDefaults } from 'vitest/config'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const buildInfoSource = fs.readFileSync(
+    path.resolve(__dirname, '../../server/internal/buildinfo/buildinfo.go'),
+    'utf8',
+  )
+  const appVersion = buildInfoSource.match(/const Version = "([^"]+)"/)?.[1]
+  if (!appVersion) {
+    throw new Error('Could not read the application version from server/internal/buildinfo/buildinfo.go')
+  }
 
   // Proxy the API through the dev/preview server so a single tunnel (e.g. ngrok) exposes both the
   // app and the API, and so requests are same-origin in dev (no CORS). Falls back to
@@ -29,6 +38,9 @@ export default defineConfig(({ mode }) => {
   ]
 
   return {
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    },
     plugins: [
       react(),
       tailwindcss(),

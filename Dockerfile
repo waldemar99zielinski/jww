@@ -1,18 +1,27 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-alpine AS web-build
-WORKDIR /src/client/web
-COPY client/web/package.json client/web/package-lock.json ./
-RUN npm ci
-COPY client/web/ ./
-RUN npm run build
-
 FROM golang:1.27-alpine AS server-build
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
 WORKDIR /src/server
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/jww-server ./cmd/server
+RUN CGO_ENABLED=0 go build \
+    -trimpath \
+    -ldflags="-s -w \
+      -X jww/internal/buildinfo.Commit=${COMMIT} \
+      -X jww/internal/buildinfo.Date=${BUILD_DATE}" \
+    -o /out/jww-server \
+    ./cmd/server
+
+FROM node:24-alpine AS web-build
+WORKDIR /src/client/web
+COPY client/web/package.json client/web/package-lock.json ./
+RUN npm ci
+COPY server/internal/buildinfo/buildinfo.go /src/server/internal/buildinfo/buildinfo.go
+COPY client/web/ ./
+RUN npm run build
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata \

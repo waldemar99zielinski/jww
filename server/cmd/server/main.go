@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"jww/internal/buildinfo"
 	"jww/internal/infrastructure/database"
 	httpserver "jww/internal/infrastructure/http_server"
 	"jww/utils/logger"
@@ -40,6 +41,12 @@ func run() error {
 	if err := logger.Configure(cfg.Logger); err != nil {
 		return err
 	}
+	log.Slog().Info(
+		"starting server",
+		slog.String("version", buildinfo.Version),
+		slog.String("commit", buildinfo.Commit),
+		slog.String("build_date", buildinfo.Date),
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

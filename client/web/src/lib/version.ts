@@ -1,4 +1,2 @@
-import pkg from '../../package.json'
-
-/** The app version, read from package.json so the manifest stays the single source of truth. */
-export const APP_VERSION: string = pkg.version
+/** Vite reads the authoritative application version from the Go buildinfo package. */
+export const APP_VERSION: string = import.meta.env.VITE_APP_VERSION
