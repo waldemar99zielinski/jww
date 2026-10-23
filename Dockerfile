@@ -23,9 +23,9 @@ COPY --from=server-build /out/jww-server /app/jww-server
 COPY --from=web-build /src/client/web/dist /app/web
 
 ENV HTTP_HOST=0.0.0.0 \
-    HTTP_PORT=8000 \
+    HTTP_PORT=80 \
     WEB_STATIC_DIR=/app/web
-EXPOSE 8000
+EXPOSE 80
 USER jww
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD wget -q -O /dev/null "http://127.0.0.1:${HTTP_PORT}/api/v1/readiness" || exit 1

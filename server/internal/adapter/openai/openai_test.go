@@ -38,15 +38,27 @@ func TestClient_Check(t *testing.T) {
 		path = r.URL.Path
 		authorization = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"gpt-4.1-mini","object":"model","created":0,"owned_by":"test"}`))
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4.1-mini","object":"model","created":0,"owned_by":"test"}]}`))
 	}))
 	defer srv.Close()
 
 	err := newClient(srv.URL).Check(appContext())
 
 	require.NoError(t, err)
-	assert.Equal(t, "/models/gpt-4.1-mini", path)
+	assert.Equal(t, "/models", path)
 	assert.Equal(t, "Bearer test-api-key", authorization)
+}
+
+func TestClient_CheckConfiguredModelMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"another-model","object":"model","created":0,"owned_by":"test"}]}`))
+	}))
+	defer srv.Close()
+
+	err := newClient(srv.URL).Check(appContext())
+
+	require.EqualError(t, err, `openai: configured model "gpt-4.1-mini" is not available`)
 }
 
 // wireRequest is the subset of the OpenAI Chat Completions request body these

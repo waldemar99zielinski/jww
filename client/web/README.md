@@ -87,7 +87,7 @@ The Go server generates that response from `WEB_API_BASE_URL` on every container
 
 ```sh
 docker build -t jww .
-docker run --env-file production.env -e WEB_API_BASE_URL=https://api.example.com -p 8000:8000 jww
+docker run --env-file production.env -e WEB_API_BASE_URL=https://api.example.com -p 80:80 jww
 ```
 
 Leave `WEB_API_BASE_URL` empty for the recommended same-origin deployment. `VITE_API_BASE_URL`

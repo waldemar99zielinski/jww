@@ -106,7 +106,7 @@ one of the two (`public.Post(...)` vs `protected.Get(...)`).
 - **Config lives next to what it configures** (`http_server.Config`, `http_server/web.Config`,
   `database.Config`, `jwt.Config`, `logger.Config`, `scheduler.Config`, `frankfurter.Config`), each
   loaded by its owning package; `cmd/server/config.go` aggregates and injects them.
-- **The daily exchange-rate sync is opt-in** (`EXCHANGE_RATE_SYNC_ENABLED`, off by default). When enabled, `scheduler` fires at 00:01, `CurrencyExchangeRateWorkflow.SyncDaily` fetches the previous day's full directed matrix among every held currency from Frankfurter, and writes it in one upsert. No migration is involved — it reuses `currency_exchange_rates`. See [`internal/infrastructure/scheduler`](internal/infrastructure/scheduler/README.md) and [`internal/adapter/frankfurter`](internal/adapter/frankfurter/README.md).
+- **The daily exchange-rate sync is opt-in** (`EXCHANGE_RATE_SYNC_ENABLED`, off by default). When enabled, `scheduler` fires at 00:01, `CurrencyExchangeRateWorkflow.SyncDaily` fetches the previous day's full directed matrix among every held currency from Frankfurter, and writes it in one upsert. No migration is involved — it reuses `currency_exchange_rates`. Historical ranges can be filled out of band with [`scripts/syncrates`](scripts/syncrates/README.md). See [`internal/infrastructure/scheduler`](internal/infrastructure/scheduler/README.md) and [`internal/adapter/frankfurter`](internal/adapter/frankfurter/README.md).
 - **Error flow**: gateway returns `(nil, nil)` for absent rows → service raises a `domain.DomainError` carrying a `domain.ErrorKind` → `kernel.WriteError` maps the kind (validation→400, unauthorized→401, not found→404, conflict→409, internal/unknown→500) and writes the standard error envelope.
 - **Transaction demarcation** lives in services (`Update`/`Delete`) and workflows (multi-service ops), never in handlers.
 - **Logging lives at the boundary only** — `cmd/server`, `internal/infrastructure/{database,http_server}`, `scripts/*`. Never in `internal/domain`/`internal/service`/`internal/adapter`: those return errors, the boundary logs them once with full request context. Logging must also stay independent of response/return-value assembly — `http_server/kernel/respond.go`'s `Write*` helpers never gain a logging side effect. See [`utils/logger`](utils/logger/README.md).
@@ -137,6 +137,9 @@ From the repository root, build one image containing the Go binary and productio
 docker build -t jww .
 ```
 
+The image listens on port `80` by default. When the optional Compose `app` profile is enabled, the
+development stack publishes that container port as host port `8000` unless `APP_PORT` is overridden.
+
 `WEB_STATIC_DIR` enables SPA serving (the image sets it to `/app/web`). Requests under `/api`
 continue to use the API router; existing files are served directly; browser navigations fall back
 to `index.html`. Startup fails if the directory or entrypoint is missing, preventing an API-healthy
@@ -158,14 +161,22 @@ only hard requirement. Dependency details stay server-side, with WARN logs for u
 services or checks at/above `READINESS_LATENCY_WARN_MS` (default 1000ms). Both the image and Compose
 probe readiness.
 
-For a local production-shaped stack, including Postgres and MinIO:
+The default development stack starts only Postgres, MinIO, and the bucket initializer; it does not
+build or start the application image:
 
 ```bash
-docker compose -f development/docker-compose.yml up --build
+docker compose -f development/docker-compose.yml up
 ```
 
-Then open `http://localhost:8000`. Deployment-specific values belong in the container environment
-or Compose `.env`, not in Docker build arguments.
+Enable the production-shaped Go + React container explicitly with the `app` profile:
+
+```bash
+docker compose -f development/docker-compose.yml --profile app up --build
+```
+
+Then open `http://localhost:8000`. As an alternative to the CLI flag, set
+`COMPOSE_PROFILES=app` in `development/.env`. Deployment-specific values belong in the container
+environment or Compose `.env`, not in Docker build arguments.
 
 ## Running migrations
 

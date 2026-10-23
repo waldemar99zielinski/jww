@@ -18,17 +18,18 @@ services:
 
   # Private S3-compatible object storage, shared by any feature that stores
   # files (transaction attachments live under the "transaction-attachments/"
-  # folder inside the shared `jww` bucket).
+  # folder inside the configured STORAGE_BUCKET, `jww` by default).
   minio:
-    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
+    image: ${STORAGE_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
     restart: unless-stopped
     command: server /data --console-address ":9001"
+    # The provider-agnostic STORAGE_ACCESS_KEY_ID/SECRET_ACCESS_KEY pair is
+    # translated into the credentials this local MinIO container expects.
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jww}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jww-development}
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-jww}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-jww-development}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${STORAGE_PORT:-9000}:9000"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -37,29 +38,32 @@ services:
       timeout: 5s
       retries: 10
 
-  # One-shot bucket initializer: creates the shared `jww` bucket and keeps it
-  # private. The server never creates buckets at startup. It reuses the MinIO
-  # image, which bundles `mc`, so the stack needs only one image.
+  # One-shot bucket initializer: creates the configured STORAGE_BUCKET and
+  # keeps it private. The server never creates buckets at startup. It reuses the
+  # MinIO image, which bundles `mc`, so the stack needs only one image.
   minio-init:
-    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
+    image: ${STORAGE_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
     depends_on:
       minio:
         condition: service_healthy
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jww}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jww-development}
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-jww}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-jww-development}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-jww}
     entrypoint: >
       /bin/sh -c "
       until mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do echo 'waiting for minio'; sleep 2; done;
-      mc mb --ignore-existing local/jww;
-      mc anonymous set none local/jww;
+      mc mb --ignore-existing local/$${STORAGE_BUCKET};
+      mc anonymous set none local/$${STORAGE_BUCKET};
       echo 'minio bucket ready';
       "
 
   # Production-shaped application container: the Go process serves both the
   # API and the Vite build. All configuration below is read at container
-  # startup; no deployment URL or secret is baked into the image.
+  # startup; no deployment URL or secret is baked into the image. The profile
+  # keeps this service out of the default dependency-only development stack.
   app:
+    profiles: ["app"]
     build:
       context: ..
       dockerfile: Dockerfile
@@ -72,8 +76,9 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-finance}:${POSTGRES_PASSWORD:-finance}@postgres:5432/${POSTGRES_DB:-finance}?sslmode=disable
       HTTP_HOST: 0.0.0.0
-      HTTP_PORT: 8000
+      HTTP_PORT: 80
       HTTP_CORS_ORIGINS: ${HTTP_CORS_ORIGINS:-*}
+      HTTP_MAX_BODY_BYTES: ${HTTP_MAX_BODY_BYTES:-1048576}
       READINESS_LATENCY_WARN_MS: ${READINESS_LATENCY_WARN_MS:-1000}
       WEB_STATIC_DIR: /app/web
       # Empty means same-origin /api. Set an absolute HTTP(S) origin (without a
@@ -85,18 +90,32 @@ services:
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
       WEBAUTHN_RP_DISPLAY_NAME: ${WEBAUTHN_RP_DISPLAY_NAME:-Joint Wallet Watch}
       WEBAUTHN_RP_ORIGINS: ${WEBAUTHN_RP_ORIGINS:-http://localhost:8000}
-      OBJECT_STORAGE_S3_BUCKET: jww
-      OBJECT_STORAGE_S3_REGION: us-east-1
-      OBJECT_STORAGE_S3_ENDPOINT: http://minio:9000
-      OBJECT_STORAGE_S3_FORCE_PATH_STYLE: "true"
-      OBJECT_STORAGE_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-jww}
-      OBJECT_STORAGE_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-jww-development}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      LOG_PRETTY: ${LOG_PRETTY:-true}
+      EXCHANGE_RATE_SYNC_ENABLED: ${EXCHANGE_RATE_SYNC_ENABLED:-false}
+      EXCHANGE_RATE_SYNC_CRON: ${EXCHANGE_RATE_SYNC_CRON:-1 0 * * *}
+      EXCHANGE_RATE_SYNC_TZ: ${EXCHANGE_RATE_SYNC_TZ:-UTC}
+      EXCHANGE_RATE_SYNC_TIMEOUT_SECONDS: ${EXCHANGE_RATE_SYNC_TIMEOUT_SECONDS:-60}
+      EXCHANGE_RATE_SYNC_RUN_ON_START: ${EXCHANGE_RATE_SYNC_RUN_ON_START:-false}
+      FRANKFURTER_BASE_URL: ${FRANKFURTER_BASE_URL:-https://api.frankfurter.dev}
+      FRANKFURTER_TIMEOUT_SECONDS: ${FRANKFURTER_TIMEOUT_SECONDS:-15}
+      # Provider-agnostic S3 settings; defaults target the local MinIO service.
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-jww}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-jww}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-jww-development}
+      STORAGE_SESSION_TOKEN: ${STORAGE_SESSION_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-development-only}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_EXTRACTION_MODEL: ${OPENAI_EXTRACTION_MODEL:-gpt-4.1-mini}
+      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-300}
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8000}
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "${APP_PORT:-8000}:80"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/v1/readiness"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/api/v1/readiness"]
       interval: 30s
       timeout: 3s
       start_period: 10s

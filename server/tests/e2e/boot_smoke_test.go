@@ -48,12 +48,12 @@ func TestCmdServerBoots(t *testing.T) {
 		"LOG_PRETTY=false",
 		"OPENAI_API_KEY=e2e-boot-smoke-throwaway-key",
 		"PUBLIC_API_BASE_URL="+addr,
-		"OBJECT_STORAGE_S3_BUCKET="+minioStore.Config.Bucket,
-		"OBJECT_STORAGE_S3_REGION="+minioStore.Config.Region,
-		"OBJECT_STORAGE_S3_ENDPOINT="+minioStore.Config.Endpoint,
-		"OBJECT_STORAGE_S3_FORCE_PATH_STYLE=true",
-		"OBJECT_STORAGE_S3_ACCESS_KEY_ID="+minioStore.Config.AccessKeyID,
-		"OBJECT_STORAGE_S3_SECRET_ACCESS_KEY="+minioStore.Config.SecretAccessKey,
+		"STORAGE_BUCKET="+minioStore.Config.Bucket,
+		"STORAGE_REGION="+minioStore.Config.Region,
+		"STORAGE_ENDPOINT="+minioStore.Config.Endpoint,
+		"STORAGE_FORCE_PATH_STYLE=true",
+		"STORAGE_ACCESS_KEY_ID="+minioStore.Config.AccessKeyID,
+		"STORAGE_SECRET_ACCESS_KEY="+minioStore.Config.SecretAccessKey,
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
