@@ -20,7 +20,7 @@
   }
   ```
 - One file per handler: a factory `func xHandler(deps *kernel.Deps) http.HandlerFunc`.
-- Routers carry no logger of their own — `kernel`'s `RequestLogger` middleware already logs every request (`"request completed"`, method/path/status/duration); see `utils/logger`'s "Where to log".
+- Routers carry no logger of their own — `kernel`'s `RequestLogger` middleware already logs every non-health request (`"request completed"`, method/path/status/duration); see `utils/logger`'s "Where to log".
 
 ## Handler body order
 

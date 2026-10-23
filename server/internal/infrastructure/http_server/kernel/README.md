@@ -10,7 +10,7 @@
 
 - `deps.go` (package doc) — `httpLog = logger.New().WithComponent("http_server")`; `Deps` holds process-lifetime singletons, including `HealthService`, which aggregates required and optional dependency checks.
 - `middleware.go`
-  - `RequestLogger` — resolves the flow id, echoes `X-JWW-Flow-ID`, wraps the writer, and after serving logs `"request completed"` with `method`/`path`/`status`/`response_bytes`/`duration`; level from `levelForStatus` (5xx→error, 4xx→warn, else info).
+  - `RequestLogger` — resolves the flow id, echoes `X-JWW-Flow-ID`, wraps the writer, and after serving logs `"request completed"` with `method`/`path`/`status`/`response_bytes`/`duration`; level from `levelForStatus` (5xx→error, 4xx→warn, else info). **Health probes** (`GET /api/v1/health` and `GET /api/v1/readiness`, per `isHealthRoute`) bypass the middleware entirely — no flow id and no request log line — since they run frequently and would otherwise dominate the log.
   - `Recoverer` — logs `"panic recovered"` (with stack) via the shared logger and writes the standard `500 {"error":{"code":"internal_error","message":"internal server error"}}`.
   - `LimitRequestBody(maxBytes)` — wraps `r.Body` in `http.MaxBytesReader`; `maxBytes <= 0` falls back to `defaultMaxBodyBytes` (1 MiB), so even a test-built `kernel.Deps{}` gets a cap. An oversized body fails on read, which `DecodeJSON` surfaces as a 400. **The two attachment-upload routes** (`POST /api/v1/transaction-attachments` and `POST /api/v1/transactions/{transactionID}/attachments`, per `isAttachmentUploadRoute`) are exempt — multipart is never exempted globally. Route-pattern matching is delegated to `http_server/utils.MatchPath`.
   - `bearerToken(r) (string, bool)` — parses `Authorization: Bearer <token>`.
@@ -25,7 +25,7 @@
 
 - **Always build context via `RequestContext(r)`** so services and logs share `flow_id`/`http_endpoint`/`user_id`.
 - **Error mapping is centralized** in `WriteError`; handlers never switch on error types.
-- **Handlers don't log their own invocation.** `RequestLogger` already logs `"request completed"` (method/path/status/duration) for every request; for now that's the only per-request log line, so `routers/<resource>` packages carry no `var log` and no component label of their own.
+- **Handlers don't log their own invocation.** `RequestLogger` already logs `"request completed"` (method/path/status/duration) for every non-health request; for now that's the only per-request log line, so `routers/<resource>` packages carry no `var log` and no component label of their own.
 
 ## How to extend
 

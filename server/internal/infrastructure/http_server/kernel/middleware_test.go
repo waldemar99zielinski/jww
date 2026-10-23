@@ -66,6 +66,45 @@ func TestRequestLogger_PassesThroughStatusAndBody(t *testing.T) {
 	assert.Equal(t, "hello", rec.Body.String())
 }
 
+func TestRequestLogger_SkipsHealthEndpoints(t *testing.T) {
+	for _, path := range []string{"/api/v1/health", "/api/v1/readiness"} {
+		t.Run(path, func(t *testing.T) {
+			called := false
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusOK)
+			})
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+
+			RequestLogger(next).ServeHTTP(rec, req)
+
+			assert.True(t, called)
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Empty(t, rec.Header().Get(flowIDHeader), "health probes bypass the logger, so no flow id is echoed")
+		})
+	}
+}
+
+func TestIsHealthRoute(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/api/v1/health", true},
+		{"/api/v1/readiness", true},
+		{"/api/v1/health/", false},
+		{"/api/v1/transactions", false},
+		{"/health", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			assert.Equal(t, tt.want, isHealthRoute(req))
+		})
+	}
+}
+
 func TestLevelForStatus(t *testing.T) {
 	tests := []struct {
 		status int

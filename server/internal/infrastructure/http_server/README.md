@@ -34,7 +34,7 @@ When deciding where code belongs:
   - `NewRouter(deps *kernel.Deps) http.Handler`:
     ```go
     r := chi.NewRouter()
-    r.Use(kernel.RequestLogger)   // outermost: sees final status
+    r.Use(kernel.RequestLogger)   // outermost: sees final status; health probes bypass it
     r.Use(kernel.Recoverer)
     r.Use(kernel.LimitRequestBody(deps.MaxBodyBytes)) // caps every body before it reaches a handler (except the two attachment-upload routes)
     r.Use(cors.Handler(cors.Options{ AllowedOrigins: deps.CorsOrigins, /* ... */ }))

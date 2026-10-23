@@ -15,14 +15,22 @@ import (
 	"jww/internal/infrastructure/http_server/utils"
 )
 
-// RequestLogger logs every request through the shared logger, binding the
-// request's flow ID and source info from the AppContext. It resolves (or
-// generates) the flow ID once, stores it on the request context, echoes it
-// back in the response header, and then reuses that same ID when building
-// the log entry — so middleware and handler logs share one flow. The log
-// level follows the response status: 5xx → error, 4xx → warn, else info.
+// RequestLogger logs every non-health request through the shared logger,
+// binding the request's flow ID and source info from the AppContext. It
+// resolves (or generates) the flow ID once, stores it on the request context,
+// echoes it back in the response header, and then reuses that same ID when
+// building the log entry — so middleware and handler logs share one flow. The
+// log level follows the response status: 5xx → error, 4xx → warn, else info.
+//
+// Liveness and readiness probes are excluded entirely: they run frequently and
+// their successful checks would otherwise dominate the request log.
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isHealthRoute(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		flowID := ensureFlowID(r)
 		ctx := withFlowID(r.Context(), flowID)
 		ctx = withRequestErrorState(ctx)
@@ -130,6 +138,21 @@ func isAttachmentUploadRoute(r *http.Request) bool {
 	patterns := [...]string{
 		"/api/v1/transaction-attachments",
 		"/api/v1/transactions/{transactionID}/attachments",
+	}
+	for _, pattern := range patterns {
+		if utils.MatchPath(pattern, r.URL.Path).Matched {
+			return true
+		}
+	}
+	return false
+}
+
+// isHealthRoute reports whether r is a liveness or readiness probe, which
+// RequestLogger deliberately leaves unlogged.
+func isHealthRoute(r *http.Request) bool {
+	patterns := [...]string{
+		"/api/v1/health",
+		"/api/v1/readiness",
 	}
 	for _, pattern := range patterns {
 		if utils.MatchPath(pattern, r.URL.Path).Matched {

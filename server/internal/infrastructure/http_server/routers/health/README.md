@@ -16,7 +16,8 @@ Public process health HTTP adapter:
   stays server-side.
 
 Health is dependency-free liveness; readiness owns all dependency checks.
-Responses are non-cacheable.
+Responses are non-cacheable. Neither probe is logged by `kernel.RequestLogger`
+(see `isHealthRoute`); only readiness warnings above still reach the log.
 
 ## Testing requirement for this directory
 

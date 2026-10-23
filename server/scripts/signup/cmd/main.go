@@ -4,6 +4,11 @@
 //
 //	go run ./scripts/signup/cmd -username alice -password s3cret -database-url postgres://...
 //
+// With -pgen it generates a secure password instead of taking -password, and
+// logs the generated value after the account is created:
+//
+//	go run ./scripts/signup/cmd -username alice -pgen -database-url postgres://...
+//
 // Each value may instead come from an environment variable (see parseParams);
 // the flag wins when both are set, and a value that neither supplies is an
 // error. The insert goes through the signup package, which builds the same
@@ -49,6 +54,7 @@ type params struct {
 	username    string
 	password    string
 	displayName string
+	pgen        bool
 }
 
 // parseParams resolves every value from a command-line flag first, then the
@@ -57,12 +63,18 @@ type params struct {
 func parseParams(args []string, getenv func(string) string) (params, error) {
 	fs := flag.NewFlagSet("signup", flag.ContinueOnError)
 	var p params
+
 	fs.StringVar(&p.databaseURL, "database-url", getenv("DATABASE_URL"), "Postgres DSN (or DATABASE_URL)")
 	fs.StringVar(&p.username, "username", getenv("SIGNUP_USERNAME"), "account username (or SIGNUP_USERNAME)")
 	fs.StringVar(&p.password, "password", getenv("SIGNUP_PASSWORD"), "account password (or SIGNUP_PASSWORD)")
 	fs.StringVar(&p.displayName, "display-name", getenv("SIGNUP_DISPLAY_NAME"), "display name (or SIGNUP_DISPLAY_NAME; defaults to username)")
+	fs.BoolVar(&p.pgen, "pgen", false, "generate a secure password instead of taking -password (flag only, off by default)")
 	if err := fs.Parse(args); err != nil {
 		return p, err
+	}
+
+	if p.pgen && p.password != "" {
+		return p, fmt.Errorf("-pgen cannot be combined with -password or SIGNUP_PASSWORD")
 	}
 
 	var missing []string
@@ -72,8 +84,8 @@ func parseParams(args []string, getenv func(string) string) (params, error) {
 	if p.username == "" {
 		missing = append(missing, "-username or SIGNUP_USERNAME")
 	}
-	if p.password == "" {
-		missing = append(missing, "-password or SIGNUP_PASSWORD")
+	if !p.pgen && p.password == "" {
+		missing = append(missing, "-password or SIGNUP_PASSWORD (or use -pgen)")
 	}
 	if len(missing) > 0 {
 		return p, fmt.Errorf("missing required value(s): %s", strings.Join(missing, ", "))
@@ -86,6 +98,15 @@ func parseParams(args []string, getenv func(string) string) (params, error) {
 }
 
 func run(p params) error {
+	password := p.password
+	if p.pgen {
+		generated, err := signup.GeneratePassword()
+		if err != nil {
+			return err
+		}
+		password = generated
+	}
+
 	loggerConfig, err := logger.LoadConfig()
 	if err != nil {
 		return err
@@ -107,7 +128,7 @@ func run(p params) error {
 	appCtx.SetContext(ctx)
 	appCtx.SetFlowID(uuid.NewString())
 
-	created, err := signup.NewClient(pool).Create(appCtx, p.username, p.password, p.displayName)
+	created, err := signup.NewClient(pool).Create(appCtx, p.username, password, p.displayName)
 	if err != nil {
 		return err
 	}
@@ -116,5 +137,11 @@ func run(p params) error {
 		slog.String("user_id", created.ID.String()),
 		slog.String("username", created.Username),
 	)
+	if p.pgen {
+		log.Slog().Info("generated password",
+			slog.String("username", created.Username),
+			slog.String("password", password),
+		)
+	}
 	return nil
 }

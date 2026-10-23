@@ -23,7 +23,8 @@
 services (`signup`'s `Client` over `user.Service`; `bootstrap` over `signup` and
 `addcurrency`), so the value of a dedicated test is lower than for the layers
 covered so far. `syncrates` additionally owns range iteration and aggregation,
-which is covered by a fast unit test with a fake syncer. If you add real logic
+which is covered by a fast unit test with a fake syncer, and `signup` owns
+password generation, covered by `password_test.go`. If you add real logic
 here beyond that (anything that isn't flag/env resolution or a straight service
 call), it would need either a unit test like `syncrates`' or an
 integration-tagged test via `internal/tests/pgtest`, the same way

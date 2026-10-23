@@ -16,7 +16,7 @@ that already has the request/process context logs it once.
 | `internal/adapter/*` (gateway/schema/security) | **Never**, by convention (not a cycle) — let the error bubble to the one caller that logs; logging it here too just duplicates the same failure | — |
 | `internal/infrastructure/database` | Yes — migration/startup events | `database` |
 | `internal/infrastructure/http_server/kernel` | Yes — request lifecycle (`RequestLogger`, `Recoverer`) | `http_server` |
-| `internal/infrastructure/http_server/routers/<resource>` | **Mostly no** — `kernel`'s `RequestLogger` middleware already logs every invocation (`"request completed"`, method/path/status/duration). Declare a package `var log = logger.New().WithComponent("http_server.<resource>")` only when a handler must log something the middleware can't see; today only `transaction_attachment` does, for extraction outcomes | `http_server.<resource>` (`http_server.transaction_attachment`) |
+| `internal/infrastructure/http_server/routers/<resource>` | **Mostly no** — `kernel`'s `RequestLogger` middleware already logs every invocation except the health probes (`"request completed"`, method/path/status/duration). Declare a package `var log = logger.New().WithComponent("http_server.<resource>")` only when a handler must log something the middleware can't see; today only `transaction_attachment` does, for extraction outcomes | `http_server.<resource>` (`http_server.transaction_attachment`) |
 | `cmd/server` | Yes — process lifecycle (startup, listening, shutdown, fatal error) | `cmd.server` |
 | `scripts/<name>` | Yes — CLI-style entry points, business events | `scripts.<name>` |
 
