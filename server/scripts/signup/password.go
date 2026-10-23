@@ -14,10 +14,13 @@ const GeneratedPasswordLength = 24
 // The character groups used by GeneratePassword. Look-alike characters (l, I,
 // O, 0, 1) are omitted so a generated password is safe to retype by hand.
 const (
-	passwordLower   = "abcdefghijkmnopqrstuvwxyz"
-	passwordUpper   = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-	passwordDigits  = "23456789"
-	passwordSymbols = "!@#$%^&*()-_=+"
+	passwordLower  = "abcdefghijkmnopqrstuvwxyz"
+	passwordUpper  = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+	passwordDigits = "23456789"
+	// '=' is deliberately absent: pretty log handlers quote values that
+	// contain it, which makes the logged password easy to copy with the
+	// surrounding quotes and then fail to verify.
+	passwordSymbols = "!@#$%^&*()-_+"
 
 	passwordAlphabet = passwordLower + passwordUpper + passwordDigits + passwordSymbols
 )

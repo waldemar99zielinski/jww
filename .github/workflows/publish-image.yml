@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      release_name: ${{ steps.version.outputs.release_name }}
 
     steps:
       - name: Check registry configuration
@@ -121,3 +123,11 @@ jobs:
           else
             echo "Git tag $RELEASE_NAME already exists on this commit"
           fi
+
+  deploy:
+    name: Deploy image
+    needs: build-and-push
+    uses: ./.github/workflows/deploy-image.yml
+    with:
+      image_tag: ${{ needs.build-and-push.outputs.release_name }}
+    secrets: inherit

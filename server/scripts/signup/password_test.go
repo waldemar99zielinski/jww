@@ -18,6 +18,7 @@ func TestGeneratePassword_MeetsLengthAndCharacterRequirements(t *testing.T) {
 		assert.True(t, strings.ContainsAny(password, passwordUpper), "missing an upper-case letter: %q", password)
 		assert.True(t, strings.ContainsAny(password, passwordDigits), "missing a digit: %q", password)
 		assert.True(t, strings.ContainsAny(password, passwordSymbols), "missing a symbol: %q", password)
+		assert.False(t, strings.ContainsAny(password, " ="), "contains a character that log handlers quote: %q", password)
 	}
 }
 

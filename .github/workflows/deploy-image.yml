@@ -1,0 +1,73 @@
+name: Deploy Docker image
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: Image tag to deploy to App Platform
+        required: true
+        type: string
+    secrets:
+      DIGITALOCEAN_ACCESS_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Existing image tag to deploy (for example jww-1.2.3-abcde-23-10-2026)
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-image-${{ inputs.image_tag }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Update App Platform image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check deployment configuration
+        env:
+          APP_NAME: ${{ vars.DIGITALOCEAN_APP_NAME }}
+          APP_SERVICE: ${{ vars.DIGITALOCEAN_APP_SERVICE }}
+          APP_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          if [[ -z "$IMAGE_TAG" ]]; then
+            echo "Missing image tag" >&2
+            exit 1
+          fi
+          if [[ -z "$APP_NAME" ]]; then
+            echo "Missing repository variable: DIGITALOCEAN_APP_NAME" >&2
+            exit 1
+          fi
+          if [[ -z "$APP_SERVICE" ]]; then
+            echo "Missing repository variable: DIGITALOCEAN_APP_SERVICE" >&2
+            exit 1
+          fi
+          if [[ ! "$APP_SERVICE" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "Repository variable DIGITALOCEAN_APP_SERVICE must contain only letters, digits, '-' and '_'" >&2
+            exit 1
+          fi
+          if [[ -z "$APP_TOKEN" ]]; then
+            echo "Missing repository secret: DIGITALOCEAN_ACCESS_TOKEN" >&2
+            exit 1
+          fi
+
+      - name: Pass image tag to App Platform
+        env:
+          APP_SERVICE: ${{ vars.DIGITALOCEAN_APP_SERVICE }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          # digitalocean/app_action/deploy@v2 reads IMAGE_TAG_<SERVICE>, with the
+          # component name uppercased and dashes replaced by underscores.
+          ENV_NAME="IMAGE_TAG_$(printf '%s' "$APP_SERVICE" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
+          echo "${ENV_NAME}=${IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "Deploying image tag ${IMAGE_TAG} to component ${APP_SERVICE}"
+
+      - name: Deploy to App Platform
+        uses: digitalocean/app_action/deploy@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          app_name: ${{ vars.DIGITALOCEAN_APP_NAME }}

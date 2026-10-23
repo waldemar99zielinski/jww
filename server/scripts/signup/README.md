@@ -56,7 +56,7 @@ combining `-pgen` with `-password`.
 - Does **not** run migrations — bring the schema up first (`go run ./cmd/server`, or `go run ./cmd/migrate up`), so the `users` table exists.
 - Fails on a duplicate username (`users_username_uq`), leaving the database unchanged.
 - Reuses the server's adapters rather than issuing its own SQL, so the hashed row stays compatible with login.
-- `-pgen` draws from `crypto/rand` and guarantees at least one lower-case letter, upper-case letter, digit, and symbol, avoiding look-alike characters (`l`, `I`, `O`, `0`, `1`).
+- `-pgen` draws from `crypto/rand` and guarantees at least one lower-case letter, upper-case letter, digit, and symbol, avoiding look-alike characters (`l`, `I`, `O`, `0`, `1`). It also avoids `=`, so pretty logs (which quote values containing it) never wrap the password in quotes that could be copied along with it.
 
 ## Testing requirement for this directory
 
