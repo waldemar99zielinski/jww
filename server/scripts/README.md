@@ -7,7 +7,7 @@
 ## Contents
 
 - [`signup/`](signup/README.md) — create a user directly in Postgres (Argon2id-hashed), bypassing the HTTP signup endpoint. Reusable `Client` in the package.
-- [`bootstrap/`](bootstrap/README.md) — seed the fixed local test accounts (`julcia`, `wozi`, `baby`, each password = username); idempotent. Reuses `signup`'s `Client`.
+- [`bootstrap/`](bootstrap/README.md) — one-command local environment setup with migrations, fixed test accounts/currencies, two months of daily fake rates, 5,000 transactions, and fixture attachments; idempotent.
 - [`syncrates/`](syncrates/README.md) — backfill currency exchange rates for a date range by running the same workflow the nightly scheduler runs, one day at a time; weekends skipped by default.
 
 ## Rules

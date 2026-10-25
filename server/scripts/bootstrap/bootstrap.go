@@ -1,7 +1,6 @@
-// Package bootstrap seeds the fixed set of local development test accounts
-// and currencies. It builds on scripts/signup's and scripts/addcurrency's
-// Clients, so each row is inserted with the same gateways and services the
-// server uses.
+// Package bootstrap prepares the complete local development data set. The
+// fixed accounts and currencies in this file are followed by generated rates,
+// transactions, and attachments from development.go.
 //
 // The command that calls it lives in cmd/.
 package bootstrap
@@ -56,9 +55,9 @@ var currencies = []currencySeed{
 	{Code: "EUR", Name: "Euro"},
 }
 
-// Seed creates every test account and currency that does not exist yet,
-// leaving existing ones untouched so re-running is safe.
-func Seed(ctx context.Context, pool *pgxpool.Pool) error {
+// seedReferences creates every test account and currency that does not exist
+// yet. The complete development bootstrap in development.go calls this first.
+func seedReferences(ctx context.Context, pool *pgxpool.Pool) error {
 	userClient := signup.NewClient(pool)
 	currencyClient := addcurrency.NewClient(pool)
 

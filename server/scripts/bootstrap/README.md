@@ -1,49 +1,48 @@
 # scripts/bootstrap
 
-**Clean Architecture layer: Frameworks & Drivers (composition root; outermost).** Standalone tool — not part of the server binary.
+One-command local-development bootstrap. It applies migrations, creates the
+standard `julcia`, `wozi`, and `baby` accounts and PLN/USD/EUR currencies, then
+adds:
 
-**Role.** Seed the local development test accounts straight into the database, using the same `gateway` repository, Argon2id `security` hasher, and `user.Service` the server uses, so each account logs in through `/v1/auth/login` like any other. Unlike [`signup`](../signup/README.md), which creates one account from its parameters, this tool always seeds the same fixed set of throwaway logins.
+- deterministic exchange rates for **every day** from two calendar months ago
+  through today (no external rate API is required);
+- 5,000 varied income and expense transactions spread over the same period;
+- 75 PDF/JPEG attachments uploaded to the configured S3-compatible store.
 
-The accounts live in code (`testAccounts` in `bootstrap.go`); each password is identical to its username:
-
-| Username | Password | Display name |
-|---|---|---|
-| `julcia` | `julcia` | `Julcia` |
-| `wozi` | `wozi` | `Wozi` |
-| `baby` | `baby` | `Baby` |
-
-## Files
-
-- `bootstrap.go` — the `testAccounts` to seed and `Seed`, which reuses [`scripts/signup`](../signup/README.md)'s `Client` to create each account (skipping ones that already exist).
-- `cmd/main.go` — the command: resolves the database URL, configures the logger, opens the pgx pool, and calls `Seed`.
+Transactions vary by user, category, currency, source, amount, name, and date.
+The fixture assets in `assets/` are embedded into the command, so the command
+works regardless of its current working directory.
 
 ## Usage
 
-From the `server/` directory, pass the database DSN as a flag:
+Start the local Postgres and MinIO stack, then run from `server/` (the values in
+`server/.env` are loaded by the same configuration mechanism as other tools):
 
 ```bash
-go run ./scripts/bootstrap/cmd -database-url postgres://user:pass@localhost:5432/finance
+go run ./scripts/bootstrap/cmd
 ```
 
-…or as an environment variable; the flag wins when both are set:
+Or provide values explicitly:
 
 ```bash
-DATABASE_URL=postgres://user:pass@localhost:5432/finance go run ./scripts/bootstrap/cmd
+DATABASE_URL=postgres://finance:finance@localhost:5432/finance \
+STORAGE_BUCKET=jww STORAGE_REGION=us-east-1 \
+STORAGE_ENDPOINT=http://localhost:9000 STORAGE_FORCE_PATH_STYLE=true \
+STORAGE_ACCESS_KEY_ID=jww STORAGE_SECRET_ACCESS_KEY=jww-development \
+go run ./scripts/bootstrap/cmd
 ```
 
-Supplying neither fails with an error.
+| Flag | Environment variable | Default |
+|---|---|---:|
+| `-database-url` | `DATABASE_URL` | required |
+| `-transactions` | `BOOTSTRAP_TRANSACTIONS` | 5000 |
+| `-attachments` | `BOOTSTRAP_ATTACHMENTS` | 75 |
+| `-random-seed` | `BOOTSTRAP_RANDOM_SEED` | 20261025 |
 
-## Parameters
+Set attachments to `0` to seed without object storage. Re-running is safe:
+rates are upserted, transactions are recognized by their development marker,
+and an existing seeded attachment is not uploaded again. To regenerate dates
+relative to a later day, recreate the disposable local database/volume first.
 
-| Flag | Environment variable | Required | Meaning |
-|---|---|---|---|
-| `-database-url` | `DATABASE_URL` | yes | `postgres://` DSN of the target database. |
-
-## Notes
-
-- Does **not** run migrations — bring the schema up first (`go run ./cmd/server`, or `go run ./cmd/migrate up`), so the `users` table exists.
-- **Idempotent**: an account whose username already exists is skipped, so re-running is safe.
-
-## Testing requirement for this directory
-
-Deferred — see [`scripts/README.md`](../README.md#testing-requirement-for-this-directory).
+The accounts use their username as their password. This command is for local,
+disposable data only and must not be run against production.
