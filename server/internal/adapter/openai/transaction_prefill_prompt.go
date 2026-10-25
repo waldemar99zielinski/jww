@@ -31,7 +31,13 @@ func transactionPrefillInstruction(input transaction_attachment_extraction.Trans
 		"For type \"income\", category_hint must come only from income_categories. " +
 		"Do not return a category that is absent from the matching list, and do not translate or invent category names. " +
 		"sub_transactions contains each individual line item with name, amount as a decimal string without a currency symbol, " +
-		"and a meaningful non-empty free-text label. Never omit a sub-transaction label or return it as null or an empty string. " +
+		"and a meaningful non-empty free-text label suitable for grouping and later analytics. " +
+		"Each label must describe a broad but accurate kind of item, not repeat or lightly reword the item name, brand, flavor, size, or SKU. " +
+		"Use short, consistent, lowercase category labels and reuse the same label for equivalent items. " +
+		"For example, label chicken or beef as \"meat\", apples or bananas as \"fruits\", carrots or spinach as \"vegetables\", milk or cheese as \"dairy\", and bread or pastries as \"bakery\". " +
+		"Use similarly broad labels such as \"beverages\", \"pantry\", \"prepared food\", \"household\", \"personal care\", or \"medicine\" when accurate. " +
+		"Do not use generic labels such as \"item\", \"product\", \"purchase\", \"other\", or \"miscellaneous\" when the item can be classified more accurately. " +
+		"Never omit a sub-transaction label or return it as null or an empty string. " +
 		"Discounts, coupons, and adjustments are line items with a negative amount and a label such as \"discount\" or \"coupon\"; never return zero. " +
 		"The transaction amount is the final amount paid after those negative lines are applied. " +
 		"Every returned scalar and every sub_transaction must include a confidence integer from 0 to 100, where 0 means no confidence and 100 means certain. " +
